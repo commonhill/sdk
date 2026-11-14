@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 Blazelight Pty Ltd
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licences of the files that can't carry an SPDX header (data, fixtures, generated and third-party
+# files). Every other file states its own in its header. `reuse lint` checks both.
+version = 1
+
+[[annotations]]
+path = ["NOTICE", "SECURITY.md"]
+SPDX-FileCopyrightText = "2026 Blazelight Pty Ltd"
+SPDX-License-Identifier = "Apache-2.0"

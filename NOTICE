@@ -1,0 +1,6 @@
+Commonhill SDK
+Copyright 2026 Blazelight Pty Ltd
+
+Licensed under the Apache License, Version 2.0, in LICENSE. Exceptions, listed in REUSE.toml: the
+kits' sandbox.py and insncap.c are GPL-2.0-or-later, qemu.patch is GPL-2.0-only and valgrind.patch
+is GPL-3.0-or-later. Third-party code keeps its upstream licence and notices.
