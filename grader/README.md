@@ -53,9 +53,9 @@ What each release added:
   `TRANSPORT_ALLOWANCE_MS`, the run's game pairs, `write_match` with `items.json` schema 2,
   `SeatFailed`). The authors' guide, section 4, "Two-player games".
 - **Release 9:** the grader SDK is release 8's; the cycles kit prices x87 (PER-492): x87
-  arithmetic as its SSE2 twin (FDIV as DIVSD, FSQRT as SQRTSD), the microcoded instructions at
-  their measured cost, where the cost table's default had charged one cycle each
-  (`kits/cycles/README.md`, "x87").
+  arithmetic and conversions as their SSE2 twins (FDIV as DIVSD, FSQRT as SQRTSD, FILD as
+  CVTSI2SD), the microcoded and BCD instructions at their cost measured on Zen 3, where the cost
+  table's default had charged one cycle each (`kits/cycles/README.md`, "x87").
 
 ## A grader in brief
 

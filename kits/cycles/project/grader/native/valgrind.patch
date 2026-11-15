@@ -447,26 +447,27 @@ index ee3e91c6f..2368d68aa 100644
  
  VG_DETERMINE_INTERFACE_VERSION(cg_pre_clo_init)
 diff --git a/callgrind/cycledecode.c b/callgrind/cycledecode.c
-index c3ba0720c..bb87f37a6 100644
+index c3ba0720c..f37911673 100644
 --- a/callgrind/cycledecode.c
 +++ b/callgrind/cycledecode.c
-@@ -183,6 +183,61 @@ static unsigned compute_sig(const cs_insn* in)
+@@ -183,6 +183,65 @@ static unsigned compute_sig(const cs_insn* in)
     return CLG_SIG(o[0], o[1], o[2], clg_width_code(w), flags);
  }
  
-+/* Commonhill (PER-492): the table has no x87 rows of its own (lut-gen keeps
-+ * measured instructions only, and uops.info measured no x87 on Zen 4), so its
-+ * default priced every x87 instruction at 1.00 cycle: FDIV at an eighth of
-+ * DIVSD, FSQRT at a thirteenth of SQRTSD, FSIN as a MOV. x87 arithmetic is
-+ * priced as its SSE2 twin's row (the same work on a double; the twin's default
-+ * row, as an x87 operand has no width of its own here). The microcoded ones
-+ * have no twin and no published Zen 4 measurement under a licence the kit can
-+ * use (LLVM's Zen 4 model gives them all a 100-cycle placeholder), so they are
-+ * priced at Commonhill's own measurement on Zen 3 (a Ryzen 5 5600X, the kit's
-+ * x87/measure.py): reciprocal throughput and latency, in whole cycles, each at
-+ * one mid-range argument (FSIN's at 1.5); the latency varies with it. Every
-+ * other x87 instruction (loads, stores, exchanges, compares, control) keeps its
-+ * row: one cycle, about what Zen takes for them. */
++/* Commonhill (PER-492): every x87 row in the table is its 100/100 default
++ * (FXSAVE aside), whatever the instruction: FDIV at an eighth of DIVSD, FSQRT
++ * at a thirteenth of SQRTSD, FSIN as a MOV. Why isn't published (lut-gen, its
++ * generator, isn't public). x87 arithmetic and conversions are priced as their
++ * SSE2 twins' rows (the same work on a double; the twin's default row, as an
++ * x87 operand has no width of its own here). The rest that compute (the
++ * microcoded ones, and BCD) have no twin and no published Zen 4 measurement
++ * under a licence the kit can use (LLVM's Zen 4 model gives them a 100-cycle
++ * placeholder; uops.info lists them as microcode, without numbers), so they
++ * are priced at Commonhill's own measurement on Zen 3 (a Ryzen 5 5600X, the
++ * kit's x87/measure.py): reciprocal throughput and latency, in whole cycles,
++ * each at one mid-range argument (FSIN's at 1.5); the latency varies with it.
++ * Loads and stores of floats, exchanges, compares, constants and control keep
++ * their one-cycle rows. */
 +typedef struct {
 +   unsigned id;
 +   unsigned twin; /* an SSE2 instruction whose default row prices it, or 0 */
@@ -484,12 +485,15 @@ index c3ba0720c..bb87f37a6 100644
 +   { X86_INS_FDIVR, X86_INS_DIVSD, 0, 0 },    { X86_INS_FDIVRP, X86_INS_DIVSD, 0, 0 },
 +   { X86_INS_FIDIV, X86_INS_DIVSD, 0, 0 },    { X86_INS_FIDIVR, X86_INS_DIVSD, 0, 0 },
 +   { X86_INS_FSQRT, X86_INS_SQRTSD, 0, 0 },   { X86_INS_FRNDINT, X86_INS_ROUNDSD, 0, 0 },
++   { X86_INS_FILD, X86_INS_CVTSI2SD, 0, 0 },  { X86_INS_FIST, X86_INS_CVTSD2SI, 0, 0 },
++   { X86_INS_FISTP, X86_INS_CVTSD2SI, 0, 0 }, { X86_INS_FISTTP, X86_INS_CVTTSD2SI, 0, 0 },
 +   { X86_INS_FSIN, 0, 3800, 15600 },          { X86_INS_FCOS, 0, 13400, 18200 },
 +   { X86_INS_FSINCOS, 0, 5200, 14900 },       { X86_INS_FPTAN, 0, 3100, 11000 },
 +   { X86_INS_FPATAN, 0, 18700, 18600 },       { X86_INS_F2XM1, 0, 2000, 8600 },
 +   { X86_INS_FYL2X, 0, 4200, 12000 },         { X86_INS_FYL2XP1, 0, 13700, 13600 },
 +   { X86_INS_FPREM, 0, 1500, 2700 },          { X86_INS_FPREM1, 0, 1700, 2800 },
 +   { X86_INS_FSCALE, 0, 200, 1100 },          { X86_INS_FXTRACT, 0, 400, 700 },
++   { X86_INS_FBLD, 0, 4800, 4800 },           { X86_INS_FBSTP, 0, 16600, 16600 },
 +};
 +
 +/* An x87 instruction's row by the above (`fixed` holds a measured one), or 0
@@ -512,7 +516,7 @@ index c3ba0720c..bb87f37a6 100644
  #elif CLG_CS_ARCH_SEL == 2
  
  static unsigned vas_elem_bits(arm64_vas vas)
-@@ -266,6 +321,14 @@ static unsigned compute_sig(const cs_insn* in)
+@@ -266,6 +325,14 @@ static unsigned compute_sig(const cs_insn* in)
                    flags);
  }
  
@@ -527,7 +531,7 @@ index c3ba0720c..bb87f37a6 100644
  #endif
  
  /*------------------------------------------------------------*/
-@@ -317,9 +380,13 @@ void clg_cycle_cost(const unsigned char* bytes,
+@@ -317,9 +384,13 @@ void clg_cycle_cost(const unsigned char* bytes,
     unsigned      sig = compute_sig(in);
     unsigned      any = sig_any_width(sig);
     const ClgRow* row;

@@ -28,13 +28,13 @@ A project's `dockerfile.grader` builds it the way `probe.dockerfile` does, step 
 
 ### x87
 
-The table has no x87 rows of its own: its generator keeps measured instructions only, and uops.info, its likely source, measured no x87 on Zen 4. So its default priced every x87 instruction at 1.00 cycle (100/100 centi-cycles): `FDIV` at an eighth of `DIVSD` (500/1300), `FSQRT` at a thirteenth of `SQRTSD` (840/2100), `FSIN` as a `MOV`. A program that did its divisions, roots or transcendentals in x87 (with the precision control at double, `FDIV` and `FSQRT` round exactly as `DIVSD` and `SQRTSD` do) wrote the same bytes for far fewer estimated cycles (PER-492). Since release 9 the patch (`callgrind/cycledecode.c`, `x87_row`) prices:
+Every x87 row in the table is its default, 100/100 centi-cycles (one cycle), whatever the instruction (`FXSAVE` aside); why isn't published, as its generator isn't. So `FDIV` cost an eighth of `DIVSD` (500/1300), `FSQRT` a thirteenth of `SQRTSD` (840/2100), `FILD` a fraction of `CVTSI2SD` (147/800), `FSIN` the same as a `MOV`. A program that did its divisions, roots, conversions or transcendentals in x87 (with the precision control at double, `FDIV` and `FSQRT` round exactly as `DIVSD` and `SQRTSD` do) wrote the same bytes for far fewer estimated cycles (PER-492). Since release 9 the patch (`callgrind/cycledecode.c`, `x87_row`) prices:
 
-- **x87 arithmetic as its SSE2 twin's row,** the same work on a double: `FADD`, `FSUB(R)(P)`, `FIADD` and `FISUB(R)` as `ADDSD`/`SUBSD`, `FMUL(P)` and `FIMUL` as `MULSD`, `FDIV(R)(P)` and `FIDIV(R)` as `DIVSD`, `FSQRT` as `SQRTSD`, `FRNDINT` as `ROUNDSD`;
-- **the microcoded instructions at a measured cost,** which have no twin: `FSIN`, `FCOS`, `FSINCOS`, `FPTAN`, `FPATAN`, `F2XM1`, `FYL2X`, `FYL2XP1`, `FPREM`, `FPREM1`, `FSCALE` and `FXTRACT`. No Zen 4 measurement of them is published under a licence the kit can use (LLVM's Zen 4 model gives them all a 100-cycle placeholder), so they are Commonhill's own, on Zen 3 (a Ryzen 5 5600X), by `x87/measure.py`: reciprocal throughput and latency in whole cycles, each at one mid-range argument (`FSIN` 38/156 at 1.5; their latency varies with the argument). Its docstring has them all and how to measure them again;
-- every other x87 instruction (loads, stores, exchanges, compares, control) as before, one cycle, about what Zen takes for them.
+- **x87 arithmetic and conversions at their SSE2 twin's row,** the same work on a double: `FADD`, `FSUB(R)(P)`, `FIADD` and `FISUB(R)` as `ADDSD`/`SUBSD`, `FMUL(P)` and `FIMUL` as `MULSD`, `FDIV(R)(P)` and `FIDIV(R)` as `DIVSD`, `FSQRT` as `SQRTSD`, `FRNDINT` as `ROUNDSD`, `FILD` as `CVTSI2SD`, `FIST(P)` as `CVTSD2SI` and `FISTTP` as `CVTTSD2SI`;
+- **the rest that compute at a measured cost,** which have no twin: `FSIN`, `FCOS`, `FSINCOS`, `FPTAN`, `FPATAN`, `F2XM1`, `FYL2X`, `FYL2XP1`, `FPREM`, `FPREM1`, `FSCALE`, `FXTRACT`, `FBLD` and `FBSTP`. No Zen 4 measurement of them is published under a licence the kit can use (LLVM's Zen 4 model gives them a 100-cycle placeholder; uops.info lists them as microcode, without numbers), so the costs are Commonhill's own, **measured on Zen 3** (a Ryzen 5 5600X), by `x87/measure.py`: reciprocal throughput and latency in whole cycles, each at one mid-range argument (`FSIN` 38/156 at 1.5; their latency varies with the argument). Its docstring has them all and how to measure them again;
+- loads and stores of floats, exchanges, compares, constants and control as before, at one cycle each.
 
-A program that executes no x87 gets the same estimate as under release 8 to the cycle.
+A program that executes none of the repriced instructions gets the same estimate as under release 8 to the cycle.
 
 ## The formula
 

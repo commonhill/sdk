@@ -1,16 +1,18 @@
-"""The x87 microcoded instructions' costs the patch charges (PER-492, valgrind.patch's x87_row in
-callgrind/cycledecode.c), measured natively: for each, its latency (each result chained into the
-next: x <- x0 + 0 * f(x), so the value stays x0 and the dependency stays) and its reciprocal
-throughput (x0 reloaded each time), in cycles of user time (`perf stat -e cycles:u`, best of 9),
-less a baseline of the glue alone. Each runs at one mid-range argument (`OPS`): their latency
-varies with it.
+"""The costs the patch charges the x87 instructions that have no SSE2 twin (PER-492,
+valgrind.patch's x87_row in callgrind/cycledecode.c), measured natively: for each, its latency
+(each result chained into the next: x <- x0 + 0 * f(x), so the value stays x0 and the dependency
+stays) and its reciprocal throughput (x0 reloaded each time), in cycles of user time (`perf stat
+-e cycles:u`, best of 9), less a baseline of the glue alone. Each runs at one mid-range argument
+(`OPS`): their latency varies with it. FBLD and FBSTP go through memory, so no result chains into
+the next: the patch charges the lesser of their two loops' cycles for both.
 
     python3 kits/cycles/x87/measure.py    needs gcc and perf, on an idle x86-64 core
 
 The patch's numbers are this script's on a Ryzen 5 5600X (Zen 3), rounded to whole cycles:
 
     fsin 156/38, fcos 182/134, fsincos 149/52, fptan 110/31, fpatan 186/187, f2xm1 86/20,
-    fyl2x 120/42, fyl2xp1 136/137, fprem 27/15, fprem1 28/17, fscale 11/2, fxtract 7/4
+    fyl2x 120/42, fyl2xp1 136/137, fprem 27/15, fprem1 28/17, fscale 11/2, fxtract 7/4,
+    fbld 48 and fbstp 166 (both loops' lesser)
     (latency/reciprocal throughput; fdiv 15/5 and fsqrt 22/10 for scale). Repeat runs on that
     host, under load, agreed to a cycle or two, except fcos's and fyl2x's throughput (to ~15).
 """
@@ -37,6 +39,8 @@ OPS = {
     "fprem1": ("5.3", "fld1", "fprem1"),
     "fscale": ("1.5", "fld1", "fscale"),
     "fxtract": ("1.5", "", "fxtract\n  fstp st(1)"),
+    "fbld": ("1.5", "", "fstp st(0)\n  fbld tbyte ptr [rip + bcd]"),
+    "fbstp": ("1.5", "", "fld st(0)\n  fbstp tbyte ptr [rip + buf]"),
     "fsqrt": ("1.5", "", "fsqrt"),
     "fdiv": ("1.5", "fld1", "fdiv st(0), st(1)"),
 }
@@ -61,6 +65,8 @@ _start:
 .data
 x0: .double {x0}
 zero: .double 0.0
+bcd: .byte 0x45, 0x23, 0x01, 0, 0, 0, 0, 0, 0, 0
+buf: .zero 16
 """
 
 

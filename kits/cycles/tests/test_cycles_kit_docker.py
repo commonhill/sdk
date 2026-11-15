@@ -450,14 +450,15 @@ REPEATS = 1000
 
 
 def test_x87_costs_what_its_sse_twin_does_or_its_measured_cost(image: str, tmp_path: Path) -> None:
-    """PER-492: the table has no x87 rows, so its default once priced FDIV, FSQRT and FSIN at one
-    cycle each, under DIVSD's 5/13 and SQRTSD's 8.4/21: the same work, cheaper in x87. Each op is
-    run 1,000 times after its setup; its own Ct and Cl (its program's less the setup's alone) are
-    its twin's, and FSIN's are its measured 38 and 156 cycles."""
+    """PER-492: every x87 row in the table was its one-cycle default, under DIVSD's 5/13,
+    SQRTSD's 8.4/21 and CVTSD2SI's 1/9: the same work, cheaper in x87. Each op is run 1,000 times
+    after its setup; its own Ct and Cl (its program's less the setup's alone) are its twin's
+    (FIST's CVTSD2SI's default row, 1/9), and FSIN's are its measured 38 and 156 cycles."""
     ops = {
         "fdiv": (X87_SETUP, "d8f1"),  # fdiv st(0), st(1)
         "fsqrt": (X87_SETUP, "d9fa"),  # fsqrt
         "fsin": (X87_SETUP, "d9fe"),  # fsin
+        "fist": (X87_SETUP, "db1424"),  # fist dword ptr [rsp]
         "divsd": (SSE_SETUP, "f20f5ec1"),  # divsd xmm0, xmm1
         "sqrtsd": (SSE_SETUP, "f20f51c0"),  # sqrtsd xmm0, xmm0
     }
@@ -477,3 +478,4 @@ def test_x87_costs_what_its_sse_twin_does_or_its_measured_cost(image: str, tmp_p
     assert each("fdiv") == each("divsd")
     assert each("fsqrt") == each("sqrtsd")
     assert each("fsin") == (3800, 15600)
+    assert each("fist") == (100, 900)
