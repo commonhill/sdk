@@ -19,7 +19,9 @@ twice in the sandbox, which must give the same exit, report and output:
 - the memory pass sees a 64 MiB mapping;
 - the program's start (argv, environment, auxiliary vector) and layout (stack, image, brk segment,
   mappings) are the same from any path and under other rlimits, and are the values recorded on
-  fuji-1, so CI's hosts are checked against them.
+  fuji-1, so CI's hosts are checked against them;
+- x87 arithmetic costs what its SSE2 twin does (FDIV as DIVSD, FSQRT as SQRTSD), and FSIN its
+  measured cost, not the table's one-cycle default (PER-492).
 """
 
 import hashlib
@@ -439,3 +441,39 @@ def test_the_programs_start_and_layout_are_the_same_on_every_host(image: str, tm
     layout = f"stack {stack:#x}, mapping {mapping:#x}, brk {brk:#x}, argv[0] at {argv0:#x}"
     digest = hashlib.sha256(out).hexdigest()
     assert (digest, text) == (LAYOUT_OUTPUT_SHA256, LAYOUT_REPORT), f"{layout}: {digest} {text!r}"
+
+
+X87_SETUP = "d9e8d9e8"  # fld1; fld1: st0 = st1 = 1.0, which each x87 op below keeps
+# mov rax, 0x3ff0000000000000; movq xmm0, rax; movq xmm1, rax: xmm0 = xmm1 = 1.0
+SSE_SETUP = "48b8000000000000f03f66480f6ec066480f6ec8"
+REPEATS = 1000
+
+
+def test_x87_costs_what_its_sse_twin_does_or_its_measured_cost(image: str, tmp_path: Path) -> None:
+    """PER-492: the table has no x87 rows, so its default once priced FDIV, FSQRT and FSIN at one
+    cycle each, under DIVSD's 5/13 and SQRTSD's 8.4/21: the same work, cheaper in x87. Each op is
+    run 1,000 times after its setup; its own Ct and Cl (its program's less the setup's alone) are
+    its twin's, and FSIN's are its measured 38 and 156 cycles."""
+    ops = {
+        "fdiv": (X87_SETUP, "d8f1"),  # fdiv st(0), st(1)
+        "fsqrt": (X87_SETUP, "d9fa"),  # fsqrt
+        "fsin": (X87_SETUP, "d9fe"),  # fsin
+        "divsd": (SSE_SETUP, "f20f5ec1"),  # divsd xmm0, xmm1
+        "sqrtsd": (SSE_SETUP, "f20f51c0"),  # sqrtsd xmm0, xmm0
+    }
+    jobs = {name: {"code": bytes.fromhex(setup + op * REPEATS + EXIT0)} for name, (setup, op) in ops.items()}
+    jobs["x87"] = {"code": bytes.fromhex(X87_SETUP + EXIT0)}
+    jobs["sse"] = {"code": bytes.fromhex(SSE_SETUP + EXIT0)}
+    runs = run_jobs(image, tmp_path, jobs)
+    totals = {name: report(text).totals for name, (_, text, _) in runs.items()}
+
+    def each(name: str) -> tuple[float, float]:
+        own = totals[name] - totals["x87" if ops[name][0] == X87_SETUP else "sse"]
+        assert own.instructions == REPEATS, name
+        return own.ct / REPEATS, own.cl / REPEATS
+
+    assert each("divsd") == (500, 1300)
+    assert each("sqrtsd") == (840, 2100)
+    assert each("fdiv") == each("divsd")
+    assert each("fsqrt") == each("sqrtsd")
+    assert each("fsin") == (3800, 15600)

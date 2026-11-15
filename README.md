@@ -18,8 +18,8 @@ the same. A project pins the release it vendored until its next reward version, 
 its copy:
 
 ```sh
-git clone --depth 1 --branch v8.0.0 https://github.com/commonhill/sdk /tmp/sdk
-python3 /tmp/sdk/tools/vendor.py check --release 8 .
+git clone --depth 1 --branch v9.0.0 https://github.com/commonhill/sdk /tmp/sdk
+python3 /tmp/sdk/tools/vendor.py check --release 9 .
 ```
 
 ## Working on it

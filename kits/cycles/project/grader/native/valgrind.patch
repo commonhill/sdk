@@ -54,7 +54,7 @@ index e73845d5d..92008f2c8 100644
  
  /* CALLED FROM GENERATED CODE */
 diff --git a/cachegrind/Makefile.am b/cachegrind/Makefile.am
-index 6ab8fbad9..b8911e658 100644
+index 6ab8fbad9..0f5ad04a0 100644
 --- a/cachegrind/Makefile.am
 +++ b/cachegrind/Makefile.am
 @@ -32,16 +32,23 @@ CACHEGRIND_SOURCES_COMMON = \
@@ -62,7 +62,7 @@ index 6ab8fbad9..b8911e658 100644
  	cg_arch.c
  
 +# Commonhill: callgrind's cycle estimation (cycledecode*.c and the cost
-+# tables), compiled in from callgrind/ unchanged, with Capstone.
++# tables), compiled in from callgrind/ with Capstone; the patch prices x87 there.
 +CACHEGRIND_CFLAGS_COMMON = -I$(top_srcdir)/callgrind
 +
  cachegrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_SOURCES      = \
@@ -87,13 +87,13 @@ index 6ab8fbad9..b8911e658 100644
  cachegrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LINK = \
 diff --git a/cachegrind/cg_cycledecode.c b/cachegrind/cg_cycledecode.c
 new file mode 100644
-index 000000000..9be7f6bdb
+index 000000000..dfb5b2418
 --- /dev/null
 +++ b/cachegrind/cg_cycledecode.c
 @@ -0,0 +1,4 @@
 +/* Commonhill: callgrind's cycle estimation (the CodSpeed fork's decoder and
-+   cost table), compiled into Cachegrind unchanged. GPL-3.0-or-later, like
-+   Valgrind. */
++   cost table), compiled into Cachegrind, with x87 priced by the patch's own
++   rule (PER-492, cycledecode.c's x87_row). GPL-3.0-or-later, like Valgrind. */
 +#include "../callgrind/cycledecode.c"
 diff --git a/cachegrind/cg_cycledecode_capstone.c b/cachegrind/cg_cycledecode_capstone.c
 new file mode 100644
@@ -446,6 +446,103 @@ index ee3e91c6f..2368d68aa 100644
  }
  
  VG_DETERMINE_INTERFACE_VERSION(cg_pre_clo_init)
+diff --git a/callgrind/cycledecode.c b/callgrind/cycledecode.c
+index c3ba0720c..bb87f37a6 100644
+--- a/callgrind/cycledecode.c
++++ b/callgrind/cycledecode.c
+@@ -183,6 +183,61 @@ static unsigned compute_sig(const cs_insn* in)
+    return CLG_SIG(o[0], o[1], o[2], clg_width_code(w), flags);
+ }
+ 
++/* Commonhill (PER-492): the table has no x87 rows of its own (lut-gen keeps
++ * measured instructions only, and uops.info measured no x87 on Zen 4), so its
++ * default priced every x87 instruction at 1.00 cycle: FDIV at an eighth of
++ * DIVSD, FSQRT at a thirteenth of SQRTSD, FSIN as a MOV. x87 arithmetic is
++ * priced as its SSE2 twin's row (the same work on a double; the twin's default
++ * row, as an x87 operand has no width of its own here). The microcoded ones
++ * have no twin and no published Zen 4 measurement under a licence the kit can
++ * use (LLVM's Zen 4 model gives them all a 100-cycle placeholder), so they are
++ * priced at Commonhill's own measurement on Zen 3 (a Ryzen 5 5600X, the kit's
++ * x87/measure.py): reciprocal throughput and latency, in whole cycles, each at
++ * one mid-range argument (FSIN's at 1.5); the latency varies with it. Every
++ * other x87 instruction (loads, stores, exchanges, compares, control) keeps its
++ * row: one cycle, about what Zen takes for them. */
++typedef struct {
++   unsigned id;
++   unsigned twin; /* an SSE2 instruction whose default row prices it, or 0 */
++   unsigned cy, cl; /* else these, centi-cycles */
++} ClgX87;
++
++static const ClgX87 clg_x87[] = {
++   { X86_INS_FADD, X86_INS_ADDSD, 0, 0 },     { X86_INS_FIADD, X86_INS_ADDSD, 0, 0 },
++   { X86_INS_FSUB, X86_INS_SUBSD, 0, 0 },     { X86_INS_FSUBP, X86_INS_SUBSD, 0, 0 },
++   { X86_INS_FSUBR, X86_INS_SUBSD, 0, 0 },    { X86_INS_FSUBRP, X86_INS_SUBSD, 0, 0 },
++   { X86_INS_FISUB, X86_INS_SUBSD, 0, 0 },    { X86_INS_FISUBR, X86_INS_SUBSD, 0, 0 },
++   { X86_INS_FMUL, X86_INS_MULSD, 0, 0 },     { X86_INS_FMULP, X86_INS_MULSD, 0, 0 },
++   { X86_INS_FIMUL, X86_INS_MULSD, 0, 0 },
++   { X86_INS_FDIV, X86_INS_DIVSD, 0, 0 },     { X86_INS_FDIVP, X86_INS_DIVSD, 0, 0 },
++   { X86_INS_FDIVR, X86_INS_DIVSD, 0, 0 },    { X86_INS_FDIVRP, X86_INS_DIVSD, 0, 0 },
++   { X86_INS_FIDIV, X86_INS_DIVSD, 0, 0 },    { X86_INS_FIDIVR, X86_INS_DIVSD, 0, 0 },
++   { X86_INS_FSQRT, X86_INS_SQRTSD, 0, 0 },   { X86_INS_FRNDINT, X86_INS_ROUNDSD, 0, 0 },
++   { X86_INS_FSIN, 0, 3800, 15600 },          { X86_INS_FCOS, 0, 13400, 18200 },
++   { X86_INS_FSINCOS, 0, 5200, 14900 },       { X86_INS_FPTAN, 0, 3100, 11000 },
++   { X86_INS_FPATAN, 0, 18700, 18600 },       { X86_INS_F2XM1, 0, 2000, 8600 },
++   { X86_INS_FYL2X, 0, 4200, 12000 },         { X86_INS_FYL2XP1, 0, 13700, 13600 },
++   { X86_INS_FPREM, 0, 1500, 2700 },          { X86_INS_FPREM1, 0, 1700, 2800 },
++   { X86_INS_FSCALE, 0, 200, 1100 },          { X86_INS_FXTRACT, 0, 400, 700 },
++};
++
++/* An x87 instruction's row by the above (`fixed` holds a measured one), or 0
++ * for any other instruction. Called once per instruction translated. */
++static const ClgRow* x87_row(unsigned id, ClgRow* fixed)
++{
++   for (unsigned i = 0; i < sizeof(clg_x87) / sizeof(clg_x87[0]); i++) {
++      if (clg_x87[i].id != id)
++         continue;
++      if (clg_x87[i].twin)
++         return row_for(clg_x87[i].twin, 0);
++      fixed->key = CLG_CSKEY(id, 0);
++      fixed->cy  = clg_x87[i].cy;
++      fixed->cl  = clg_x87[i].cl;
++      return fixed;
++   }
++   return 0;
++}
++
+ #elif CLG_CS_ARCH_SEL == 2
+ 
+ static unsigned vas_elem_bits(arm64_vas vas)
+@@ -266,6 +321,14 @@ static unsigned compute_sig(const cs_insn* in)
+                   flags);
+ }
+ 
++/* Commonhill (PER-492): x87 is x86's alone. */
++static const ClgRow* x87_row(unsigned id, ClgRow* fixed)
++{
++   (void)id;
++   (void)fixed;
++   return 0;
++}
++
+ #endif
+ 
+ /*------------------------------------------------------------*/
+@@ -317,9 +380,13 @@ void clg_cycle_cost(const unsigned char* bytes,
+    unsigned      sig = compute_sig(in);
+    unsigned      any = sig_any_width(sig);
+    const ClgRow* row;
++   ClgRow        fixed;
+ 
+-   /* exact -> width-agnostic -> per-instruction default -> miss */
+-   if ((row = row_for(id, sig))) {
++   /* Commonhill (PER-492): x87 by its own rule first (x87_row), then
++      exact -> width-agnostic -> per-instruction default -> miss */
++   if ((row = x87_row(id, &fixed))) {
++      stats.hit_default++;
++   } else if ((row = row_for(id, sig))) {
+       stats.hit_exact++;
+    } else if (any != sig && (row = row_for(id, any))) {
+       stats.hit_width++;
 diff --git a/configure.ac b/configure.ac
 index 057631167..b420d318b 100644
 --- a/configure.ac

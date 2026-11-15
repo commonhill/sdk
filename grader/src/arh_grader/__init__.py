@@ -69,7 +69,7 @@ from arh_grader.view import (
     write_view,
 )
 
-RELEASE = 8
+RELEASE = 9
 
 __all__ = [
     "DEADLINE_ENV",

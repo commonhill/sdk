@@ -18,13 +18,23 @@ It is the successor to the instruction-count kit (`kits/insncap`). An instructio
 
 ## The engine
 
-[valgrind-codspeed](https://github.com/CodSpeedHQ/valgrind-codspeed) is CodSpeed's fork of Valgrind 3.26 (GPL-3.0-or-later), pinned at release `3.26.0-0codspeed13` (commit `346abce5`), with its Capstone submodule (commit `02257584`). CodSpeed's own callgrind decodes each instruction with Capstone and looks it up in a generated table of Zen 4 latency and reciprocal throughput (`callgrind/x86_caps_lut.inc`). The patch compiles that decoder and table into Cachegrind unchanged, because Cachegrind simulates the same caches about 3 times faster than callgrind (callgrind spends the difference on its call graph).
+[valgrind-codspeed](https://github.com/CodSpeedHQ/valgrind-codspeed) is CodSpeed's fork of Valgrind 3.26 (GPL-3.0-or-later), pinned at release `3.26.0-0codspeed13` (commit `346abce5`), with its Capstone submodule (commit `02257584`). CodSpeed's own callgrind decodes each instruction with Capstone and looks it up in a generated table of Zen 4 latency and reciprocal throughput (`callgrind/x86_caps_lut.inc`). The patch compiles that decoder and table into Cachegrind, because Cachegrind simulates the same caches about 3 times faster than callgrind (callgrind spends the difference on its call graph), and changes one thing in them: how x87 is priced (below).
 
 A project's `dockerfile.grader` builds it the way `probe.dockerfile` does, step for step (so the two share Docker's cache):
 
 1. fetch both archives from GitHub (`codeload.github.com`, pinned by SHA-256; add it to `[build] egress`);
 2. apply the patch (`patch -p1 --forward`), `./autogen.sh`, `./configure --enable-only64bit`, then build only what the two tools need: `make include/vgversion.h` and `make` in `third_party`, `include`, `VEX`, `coregrind`, `cachegrind` and `massif`;
 3. copy the two static tools, `cachegrind/cachegrind-amd64-linux` and `massif/massif-amd64-linux`, into `grader/bin/valgrind/` (`sandbox.py`'s `VALGRIND`).
+
+### x87
+
+The table has no x87 rows of its own: its generator keeps measured instructions only, and uops.info, its likely source, measured no x87 on Zen 4. So its default priced every x87 instruction at 1.00 cycle (100/100 centi-cycles): `FDIV` at an eighth of `DIVSD` (500/1300), `FSQRT` at a thirteenth of `SQRTSD` (840/2100), `FSIN` as a `MOV`. A program that did its divisions, roots or transcendentals in x87 (with the precision control at double, `FDIV` and `FSQRT` round exactly as `DIVSD` and `SQRTSD` do) wrote the same bytes for far fewer estimated cycles (PER-492). Since release 9 the patch (`callgrind/cycledecode.c`, `x87_row`) prices:
+
+- **x87 arithmetic as its SSE2 twin's row,** the same work on a double: `FADD`, `FSUB(R)(P)`, `FIADD` and `FISUB(R)` as `ADDSD`/`SUBSD`, `FMUL(P)` and `FIMUL` as `MULSD`, `FDIV(R)(P)` and `FIDIV(R)` as `DIVSD`, `FSQRT` as `SQRTSD`, `FRNDINT` as `ROUNDSD`;
+- **the microcoded instructions at a measured cost,** which have no twin: `FSIN`, `FCOS`, `FSINCOS`, `FPTAN`, `FPATAN`, `F2XM1`, `FYL2X`, `FYL2XP1`, `FPREM`, `FPREM1`, `FSCALE` and `FXTRACT`. No Zen 4 measurement of them is published under a licence the kit can use (LLVM's Zen 4 model gives them all a 100-cycle placeholder), so they are Commonhill's own, on Zen 3 (a Ryzen 5 5600X), by `x87/measure.py`: reciprocal throughput and latency in whole cycles, each at one mid-range argument (`FSIN` 38/156 at 1.5; their latency varies with the argument). Its docstring has them all and how to measure them again;
+- every other x87 instruction (loads, stores, exchanges, compares, control) as before, one cycle, about what Zen takes for them.
+
+A program that executes no x87 gets the same estimate as under release 8 to the cycle.
 
 ## The formula
 
