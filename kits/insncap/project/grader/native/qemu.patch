@@ -1,0 +1,180 @@
+The instruction-count kit's changes to QEMU 11.1.2's user-mode emulator (sdk/insncap): the guest
+program runs, and counts, the same every time, and it can't touch the emulator's own memory. The
+guest's system calls, its clocks and its randomness among them, are insncap.c's to answer.
+
+1. The time-stamp counter (rdtsc, and rdtscp, which reads it too) advances by 1024 on every read
+   instead of following the host's clock, and TSC_AUX (rdtscp's ECX, and rdpid) is 0 instead of
+   the host CPU the emulator happens to run on.
+2. Under -R (a guest address space reserved below 4 GiB, laid out by QEMU alone, so the same in
+   every run whatever the host's own mappings), x86-64's vsyscall page, at the top of the address
+   space, is out of range, and QEMU refuses to start. The guest goes without it: a call there
+   faults like any unmapped address (C libraries use the vDSO, whose calls are system calls).
+3. Every guest load and store is range-checked before it happens. In user mode a guest address
+   becomes the host's `guest_base + address`, unchecked, so a guest that can make a pointer (C,
+   unsafe Rust, Python's ctypes or numpy's `__array_interface__`) could read or write anything
+   in the emulator: its code buffer, its data, the plugin's count. Now:
+   - translated code (tcg/x86_64, prepare_host_addr's user-mode branch) compares each access's
+     address with the last valid guest address less its size, and sends one past it to the slow
+     path, two host instructions per access;
+   - the slow path and every helper's access (cpu_mmu_lookup: the ld/st helpers, cpu_ld*/cpu_st*)
+     and every atomic (atomic_mmu_lookup: cmpxchg, cmpxchg16b, the locked read-modify-writes)
+     check the range again, and an access outside it ends the process with status 135 at once,
+     before anything of it lands (the kit reports it as `escape`); the guest can't catch it;
+   - tlb_vaddr_to_host gives no host pointer outside the range.
+   Instruction fetches (probe_access_internal) and system calls (access_ok, guest_range_valid)
+   already check the range; sdk/insncap/README.md lists every host-address conversion and what
+   covers it.
+--- a/target/i386/tcg/misc_helper.c
++++ b/target/i386/tcg/misc_helper.c
+@@ -71,7 +71,9 @@
+     }
+     cpu_svm_check_intercept_param(env, SVM_EXIT_RDTSC, 0, GETPC());
+ 
+-    val = cpu_get_tsc(env) + env->tsc_offset;
++    /* arh: a counter that advances by 1024 on every read, the same on every run. */
++    static uint64_t arh_tsc;
++    val = arh_tsc += 1024;
+     env->regs[R_EAX] = (uint32_t)(val);
+     env->regs[R_EDX] = (uint32_t)(val >> 32);
+ }
+@@ -134,12 +136,7 @@
+ #if !defined CONFIG_USER_ONLY
+     return env->tsc_aux;
+-#elif defined CONFIG_LINUX && defined CONFIG_GETCPU
+-    unsigned cpu, node;
+-    getcpu(&cpu, &node);
+-    return (node << 12) | (cpu & 0xfff);
+-#elif defined CONFIG_SCHED_GETCPU
+-    return sched_getcpu();
+ #else
++    /* arh: CPU 0, the same on every run. */
+     return 0;
+ #endif
+ }
+--- a/linux-user/x86_64/elfload.c
++++ b/linux-user/x86_64/elfload.c
+@@ -34,8 +34,7 @@
+     if (reserved_va != 0 &&
+         TARGET_VSYSCALL_PAGE + TARGET_PAGE_SIZE - 1 > reserved_va) {
+-        error_report("Cannot allocate vsyscall page");
+-        exit(EXIT_FAILURE);
++        return true;
+     }
+     page_set_flags(TARGET_VSYSCALL_PAGE,
+                    TARGET_VSYSCALL_PAGE | ~TARGET_PAGE_MASK,
+                    PAGE_EXEC | PAGE_VALID, PAGE_VALID);
+--- a/tcg/x86_64/tcg-target.c.inc
++++ b/tcg/x86_64/tcg-target.c.inc
+@@ -1880,6 +1880,9 @@
+     .index = -1
+ };
+ 
++/* arh: the last valid guest address (linux-user/main.c), for the range check below. */
++extern unsigned long guest_addr_max;
++
+ #if defined(__linux__)
+ # include <asm/prctl.h>
+ # include <sys/prctl.h>
+@@ -1997,19 +2000,44 @@
+         /* TLB Hit.  */
+         tcg_out_ld(s, TCG_TYPE_PTR, TCG_REG_L0, TCG_REG_L0,
+                    offsetof(CPUTLBEntry, addend));
+-    } else if (a_mask) {
++    } else {
+         int jcc;
+ 
+-        ldst = new_ldst_label(s);
+-        ldst->is_ld = is_ld;
+-        ldst->oi = oi;
+-        ldst->addr_reg = addr;
++        /*
++         * arh: an access any byte of which lies past the guest's space goes to the slow path,
++         * whose cpu_mmu_lookup ends the process (accel/tcg/user-exec.c): the host address is
++         * guest_base + address, unchecked, so without this a guest reaches the emulator's own
++         * memory. The kit's -R keeps the bound within an imm32.
++         */
++        if (guest_addr_max != ~0ul) {
++            uint64_t last = (uint64_t)guest_addr_max - ((1u << s_bits) - 1);
+ 
+-        /* jne slow_path */
+-        jcc = tcg_out_cmp(s, TCG_COND_TSTNE, addr, a_mask, true, false);
+-        tcg_out_opc(s, OPC_JCC_long + jcc, 0, 0, 0);
+-        ldst->label_ptr[0] = s->code_ptr;
+-        s->code_ptr += 4;
++            g_assert(last == (int32_t)last);
++            ldst = new_ldst_label(s);
++            ldst->is_ld = is_ld;
++            ldst->oi = oi;
++            ldst->addr_reg = addr;
++
++            /* ja slow_path */
++            jcc = tcg_out_cmp(s, TCG_COND_GTU, addr, last, true, P_REXW);
++            tcg_out_opc(s, OPC_JCC_long + jcc, 0, 0, 0);
++            ldst->label_ptr[0] = s->code_ptr;
++            s->code_ptr += 4;
++        }
++        if (a_mask) {
++            if (ldst == NULL) {
++                ldst = new_ldst_label(s);
++                ldst->is_ld = is_ld;
++                ldst->oi = oi;
++                ldst->addr_reg = addr;
++            }
++
++            /* jne slow_path */
++            jcc = tcg_out_cmp(s, TCG_COND_TSTNE, addr, a_mask, true, false);
++            tcg_out_opc(s, OPC_JCC_long + jcc, 0, 0, 0);
++            ldst->label_ptr[ldst->label_ptr[0] == NULL ? 0 : 1] = s->code_ptr;
++            s->code_ptr += 4;
++        }
+     }
+ 
+     return ldst;
+--- a/accel/tcg/user-exec.c
++++ b/accel/tcg/user-exec.c
+@@ -817,6 +817,10 @@
+ void *tlb_vaddr_to_host(CPUArchState *env, vaddr addr,
+                         MMUAccessType access_type, int mmu_idx)
+ {
++    /* arh: no host pointer outside the guest's space; callers take the checked slow path. */
++    if (!guest_addr_valid_untagged_vaddr(addr)) {
++        return NULL;
++    }
+     return g2h_vaddr(env_cpu(env), addr);
+ }
+ 
+@@ -933,12 +937,25 @@
+ 
+ /* The system-mode versions of these helpers are in cputlb.c.  */
+ 
++/*
++ * arh: a guest access outside the guest's space ends the process with status 135 at once, before
++ * it reaches the host: nothing of it lands, and the guest can't catch it (the instruction-count
++ * kit reports it as `escape`).
++ */
++static void arh_check_range(vaddr addr, size_t size)
++{
++    if (unlikely(!guest_range_valid_untagged_vaddr(addr, size))) {
++        _exit(135);
++    }
++}
++
+ static void *cpu_mmu_lookup(CPUState *cpu, vaddr addr,
+                             MemOp mop, uintptr_t ra, MMUAccessType type)
+ {
+     int a_bits = memop_alignment_bits(mop);
+     void *ret;
+ 
++    arh_check_range(addr, memop_size(mop));
+     /* Enforce guest required alignment.  */
+     if (unlikely(addr & ((1 << a_bits) - 1))) {
+         cpu_loop_exit_sigbus(cpu, addr, type, ra);
+@@ -1227,6 +1244,8 @@
+     int a_bits = memop_alignment_bits(mop);
+     void *ret;
+ 
++    arh_check_range(addr, size);
++
+     /* Enforce guest required alignment.  */
+     if (unlikely(addr & ((1 << a_bits) - 1))) {
+         cpu_loop_exit_sigbus(cpu, addr, MMU_DATA_STORE, retaddr);

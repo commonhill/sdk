@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 Blazelight Pty Ltd
+# SPDX-License-Identifier: Apache-2.0
+#
+# The sdk's tools and tasks: CI (.github/workflows/ci.yml) runs `lint ::: typecheck` and `test`.
+[tools]
+uv = "0.13.1"
+
+[tasks.lint]
+description = "ruff lint and format check"
+run = ["uv run ruff check", "uv run ruff format --check"]
+
+[tasks.typecheck]
+description = "pyright, strict"
+run = "uv run pyright"
+
+[tasks.test]
+description = "Every test: the grader SDK's, the kits' (their Docker tests build the kits' probe images), the testkit's and the vendoring tool's"
+run = 'uv run pytest --numprocesses "${ARH_TEST_WORKERS:-8}" --durations=20'

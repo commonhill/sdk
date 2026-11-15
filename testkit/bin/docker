@@ -1,0 +1,184 @@
+#!/bin/sh
+# The tests' `docker` (PER-437): arh_testkit (`docker_turns`) puts this directory first on PATH, so
+# every `docker` a test runs (its own, arh_testkit's, `arh run`'s, the runner's and the template's)
+# comes here, and ARH_REAL_DOCKER is the one it found.
+#
+# A command that builds (`docker build`, `buildx build`, `image build`, `compose build`, and
+# `compose up`, `run` or `create` with `--build`, or without `--no-build` while one of the
+# project's images is missing) waits for its turn: a lock the other builds share, or has alone when
+# ARH_BUILD_TURN is "alone" (the attempt after a stall). One waiting to build alone holds the gate
+# every build passes to start, so none starts meanwhile. The lock is held until the command and its
+# children end. Its children get ARH_BUILD_TURN=held: a `docker` they run builds within the turn
+# already taken. Any other command runs at once: a compose `up`, `run` or `create` whose images are
+# all there builds nothing, so it never waits behind builds (PER-457: a `run --rm ... cat` waited
+# 20 minutes so).
+#
+# A wait for the turn says so on stderr every 10 s, and every minute which commands hold the turn
+# or wait at the gate (their records in ARH_BUILD_TURN_LOCK.holders); past ARH_BUILD_TURN_WAIT_S
+# (default 1800) it gives up, exit 125, naming them.
+#
+# Every build (a `build` subcommand) gets ARH_TEST_BUILD_ARGS's build args (KEY=VALUE lines: the
+# package mirrors, PER-457) first, so the caller's own come after them and win.
+real=${ARH_REAL_DOCKER:?ARH_REAL_DOCKER: arh_testkit sets it}
+if [ "${ARH_BUILD_TURN:-}" = held ]; then
+    exec "$real" "$@"
+fi
+
+# docker's and compose's global options that take a value as the next word.
+takes_value() {
+    case $1 in
+        -f | --file | -p | --project-name | --profile | --env-file | --progress | --project-directory | \
+            --ansi | --parallel | -c | --context | -H | --host | --config | -l | --log-level) return 0 ;;
+    esac
+    return 1
+}
+
+# The command's subcommands: the first word that is no option or option's value (`command`), and
+# for buildx, image, builder and compose the next such word (`sub`, at position `at`).
+command='' sub='' at=0 i=0 skip='' build='' nobuild='' starts=''
+for arg in "$@"; do
+    i=$((i + 1))
+    case $arg in
+        --no-build) nobuild=1 ;;
+        --build) build=1 ;;
+    esac
+    if [ -n "$skip" ]; then
+        skip=
+        continue
+    fi
+    if [ -n "$sub" ]; then
+        continue
+    fi
+    case $arg in
+        -*=*) continue ;;
+        -*)
+            takes_value "$arg" && skip=1
+            continue
+            ;;
+    esac
+    if [ -z "$command" ]; then
+        command=$arg
+        case $command in
+            buildx | image | builder | compose) ;;
+            *) sub=$command at=$i ;;
+        esac
+    else
+        sub=$arg at=$i
+    fi
+done
+
+builds=
+case $sub in
+    build) builds=1 ;;
+    up | run | create)
+        if [ "$command" = compose ] && [ -z "$nobuild" ]; then
+            starts=1
+        fi
+        ;;
+esac
+
+# Do the images of the compose project named by the words before `sub` all exist?
+images_there() {
+    count=$1
+    shift
+    n=0
+    for arg in "$@"; do
+        shift
+        n=$((n + 1))
+        [ "$n" -lt "$count" ] && set -- "$@" "$arg"
+    done
+    images=$("$real" "$@" config --images 2>/dev/null) || return 1
+    [ -n "$images" ] || return 1
+    # shellcheck disable=SC2086 # image names have no spaces
+    "$real" image inspect --format . $images >/dev/null 2>&1
+}
+
+if [ -n "$starts" ]; then
+    if [ -n "$build" ] || ! images_there "$at" "$@"; then
+        builds=1
+    fi
+fi
+if [ -z "$builds" ]; then
+    exec "$real" "$@"
+fi
+
+# The build args, after the `build` subcommand.
+if [ "$sub" = build ] && [ -n "${ARH_TEST_BUILD_ARGS:-}" ]; then
+    n=0
+    for arg in "$@"; do
+        shift
+        n=$((n + 1))
+        set -- "$@" "$arg"
+        if [ "$n" -eq "$at" ]; then
+            old_ifs=$IFS
+            IFS='
+'
+            for pair in $ARH_TEST_BUILD_ARGS; do
+                set -- "$@" --build-arg "$pair"
+            done
+            IFS=$old_ifs
+        fi
+    done
+fi
+
+lock=${ARH_BUILD_TURN_LOCK:?}
+holders="$lock.holders"
+mkdir -p "$holders"
+limit=${ARH_BUILD_TURN_WAIT_S:-1800}
+started=$(date +%s)
+
+record() {
+    what=$1
+    shift
+    printf '%s, since %s: docker %s\n' "$what" "$(date -u +%H:%M:%S)" "$*" | cut -c1-400 >"$holders/$$"
+}
+
+holding() {
+    for file in "$holders"/*; do
+        [ -f "$file" ] || continue
+        pid=${file##*/}
+        if [ "$pid" = $$ ]; then
+            continue
+        fi
+        # A record outlives its command: only a live docker process's counts.
+        if kill -0 "$pid" 2>/dev/null && grep -q docker "/proc/$pid/cmdline" 2>/dev/null; then
+            printf '  pid %s, %s\n' "$pid" "$(cat "$file" 2>/dev/null)"
+        else
+            rm -f "$file"
+        fi
+    done
+}
+
+wait_for() {
+    tick=0
+    until flock -w 10 "$@"; do
+        tick=$((tick + 1))
+        waited=$(($(date +%s) - started))
+        if [ "$waited" -ge "$limit" ]; then
+            echo "docker (arh_testkit's bin/docker): no build turn (PER-437) in ${waited} s (ARH_BUILD_TURN_WAIT_S); held or waited for by:" >&2
+            holding >&2
+            rm -f "$holders/$$"
+            exit 125
+        fi
+        if [ $((tick % 6)) -eq 0 ]; then
+            echo "docker (arh_testkit's bin/docker): waiting for the build turn (PER-437) for ${waited} s; held or waited for by:" >&2
+            holding >&2
+        else
+            echo "docker (arh_testkit's bin/docker): waiting for the build turn (PER-437)" >&2
+        fi
+    done
+}
+
+exec 8>>"${ARH_BUILD_TURN_GATE:?}" 9>>"$lock"
+wait_for 8
+if [ "${ARH_BUILD_TURN:-}" = alone ]; then
+    record "waiting to build alone (holding the gate)" "$@"
+    wait_for 9
+    record "building alone" "$@"
+else
+    wait_for -s 9
+    record "building (shared)" "$@"
+fi
+flock -u 8
+exec 8>&-
+ARH_BUILD_TURN=held exec "$real" "$@"

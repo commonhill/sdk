@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2026 Blazelight Pty Ltd
+# SPDX-License-Identifier: Apache-2.0
+#
+# The sdk's CI on its runners (the commonhill-sdk ARC set), through commonhill/.github's reusable
+# workflows: the static checks (lint, types, every file's licence) and every test in one job, the
+# kits' Docker tests among them; check.yml is the one required check. The suite is small, so no
+# job is conditional.
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  static:
+    uses: commonhill/.github/.github/workflows/static.yml@v1
+    with: { tasks: "lint ::: typecheck", runs-on: commonhill-sdk }
+
+  tests:
+    uses: commonhill/.github/.github/workflows/pytest.yml@v1
+    with:
+      task: test
+      durations: ""
+      runs-on: commonhill-sdk
+
+  check:
+    if: always()
+    needs: [static, tests]
+    uses: commonhill/.github/.github/workflows/check.yml@v1
+    with:
+      needs: ${{ toJSON(needs) }}
+      wanted: '{"static": true, "tests": true}'
+      gate: ""  # every job is fixed: no changes classifier here
+      runs-on: commonhill-sdk

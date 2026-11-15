@@ -1,0 +1,33 @@
+{"schema": 1, "panels": [
+  {"kind": "games", "caption": "Ultimate tic-tac-toe on the public sample's opening", "games": [
+   {
+    "title": "Game 1: the candidate as X",
+    "width": 9,
+    "height": 9,
+    "players": [{"name": "candidate"}, {"name": "incumbent"}],
+    "pieces": {"X": {"shape": "cross", "player": 0}, "O": {"shape": "ring", "player": 1}},
+    "regions": [{"x": 0, "y": 0, "w": 3, "h": 3}, {"x": 3, "y": 0, "w": 3, "h": 3}, {"x": 6, "y": 0, "w": 3, "h": 3}, {"x": 0, "y": 3, "w": 3, "h": 3}, {"x": 3, "y": 3, "w": 3, "h": 3}, {"x": 6, "y": 3, "w": 3, "h": 3}, {"x": 0, "y": 6, "w": 3, "h": 3}, {"x": 3, "y": 6, "w": 3, "h": 3}, {"x": 6, "y": 6, "w": 3, "h": 3}],
+    "frames": [
+      {"focus": [0, 1, 2, 3, 4, 5, 6, 7, 8], "note": "X to move, anywhere"},
+      {"set": [[1, 7, "X"]], "focus": [4], "note": "X plays b8"},
+      {"set": [[4, 5, "O"]], "focus": [7], "note": "O plays e6"},
+      {"set": [[3, 6, "X"]], "focus": [0], "note": "X plays d7"},
+      {"set": [[1, 2, "O"]], "focus": [7], "note": "O plays b3"},
+      {"set": [[3, 7, "X"]], "focus": [3], "note": "X plays d8"},
+      {"set": [[0, 5, "O"]], "focus": [6], "note": "O plays a6"},
+      {"set": [[1, 8, "X"]], "focus": [7], "note": "X plays b9"},
+      {"set": [[5, 8, "O"]], "focus": [8], "note": "O plays f9"},
+      {"set": [[8, 7, "X"]], "focus": [5], "note": "X plays i8"},
+      {"set": [[8, 5, "O"]], "focus": [8], "note": "O plays i6"},
+      {"set": [[8, 8, "X"]], "focus": [8], "note": "X plays i9"},
+      {"set": [[7, 8, "O"]], "focus": [7], "note": "O plays h9"},
+      {"set": [[3, 8, "X"]], "own": [[7, 0]], "focus": [6], "note": "X plays d9, winning the bottom board"},
+      {"set": [[0, 8, "O"]], "focus": [6], "note": "O plays a9"},
+      {"set": [[1, 6, "X"]], "own": [[6, 0]], "focus": [1], "note": "X plays b7, winning the bottom left board"},
+      {"set": [[5, 2, "O"]], "focus": [8], "note": "O plays f3"},
+      {"set": [[8, 6, "X"]], "own": [[8, 0]], "note": "X plays i7, winning the bottom right board; X wins the big board"}
+    ],
+    "result": {"winner": 0, "note": "X wins on the big board"}
+   }
+  ]}
+]}

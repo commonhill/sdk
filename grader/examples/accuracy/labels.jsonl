@@ -1,0 +1,20 @@
+{"input": "what a great day, I love it", "label": "positive"}
+{"input": "this is bad and I hate it", "label": "negative"}
+{"input": "excellent service, very happy", "label": "positive"}
+{"input": "terrible food, awful staff", "label": "negative"}
+{"input": "nice and fine overall", "label": "positive"}
+{"input": "poor quality, broken on arrival", "label": "negative"}
+{"input": "I am happy with the result", "label": "positive"}
+{"input": "sad ending, bad pacing", "label": "negative"}
+{"input": "good value for money", "label": "positive"}
+{"input": "the screen arrived broken", "label": "negative"}
+{"input": "not bad at all, actually good", "label": "positive"}
+{"input": "I would not call it good", "label": "negative"}
+{"input": "love the colour", "label": "positive"}
+{"input": "hate the noise it makes", "label": "negative"}
+{"input": "great battery life", "label": "positive"}
+{"input": "awful customer support", "label": "negative"}
+{"input": "it works", "label": "positive"}
+{"input": "it stopped working after a day", "label": "negative"}
+{"input": "fine, does the job", "label": "positive"}
+{"input": "never again", "label": "negative"}

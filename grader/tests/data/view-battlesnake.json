@@ -1,0 +1,37 @@
+{"schema": 1, "panels": [
+  {"kind": "games", "caption": "Battlesnake on the public sample's first start", "games": [
+   {
+    "title": "Game 1: the candidate against the incumbent",
+    "width": 11,
+    "height": 11,
+    "players": [{"name": "candidate"}, {"name": "incumbent"}],
+    "pieces": {"food": {"shape": "dot"}},
+    "frames": [
+      {"set": [[2, 0, "food"], [5, 5, "food"], [8, 10, "food"]], "paths": [{"player": 0, "cells": [[1, 1], [1, 1], [1, 1]]}, {"player": 1, "cells": [[9, 9], [9, 9], [9, 9]]}], "note": "turn 0"},
+      {"set": [[10, 7, "food"]], "paths": [{"player": 0, "cells": [[1, 0], [1, 1], [1, 1]]}, {"player": 1, "cells": [[9, 8], [9, 9], [9, 9]]}], "note": "turn 1"},
+      {"clear": [[2, 0]], "set": [[0, 2, "food"]], "paths": [{"player": 0, "cells": [[2, 0], [1, 0], [1, 1], [1, 1]]}, {"player": 1, "cells": [[9, 7], [9, 8], [9, 9]]}], "note": "turn 2: the candidate eats"},
+      {"set": [[2, 2, "food"]], "paths": [{"player": 0, "cells": [[2, 1], [2, 0], [1, 0], [1, 1]]}, {"player": 1, "cells": [[9, 6], [9, 7], [9, 8]]}], "note": "turn 3"},
+      {"clear": [[2, 2]], "set": [[8, 4, "food"]], "paths": [{"player": 0, "cells": [[2, 2], [2, 1], [2, 0], [1, 0], [1, 1]]}, {"player": 1, "cells": [[8, 6], [9, 6], [9, 7]]}], "note": "turn 4: the candidate eats"},
+      {"set": [[2, 4, "food"]], "paths": [{"player": 0, "cells": [[1, 2], [2, 2], [2, 1], [2, 0], [1, 0]]}, {"player": 1, "cells": [[7, 6], [8, 6], [9, 6]]}], "note": "turn 5"},
+      {"clear": [[0, 2]], "set": [[3, 2, "food"]], "paths": [{"player": 0, "cells": [[0, 2], [1, 2], [2, 2], [2, 1], [2, 0], [1, 0]]}, {"player": 1, "cells": [[6, 6], [7, 6], [8, 6]]}], "note": "turn 6: the candidate eats"},
+      {"paths": [{"player": 0, "cells": [[0, 3], [0, 2], [1, 2], [2, 2], [2, 1], [2, 0]]}, {"player": 1, "cells": [[6, 5], [6, 6], [7, 6]]}], "note": "turn 7"},
+      {"clear": [[5, 5]], "set": [[7, 8, "food"]], "paths": [{"player": 0, "cells": [[0, 4], [0, 3], [0, 2], [1, 2], [2, 2], [2, 1]]}, {"player": 1, "cells": [[5, 5], [6, 5], [6, 6], [7, 6]]}], "note": "turn 8: the incumbent eats"},
+      {"set": [[3, 9, "food"]], "paths": [{"player": 0, "cells": [[1, 4], [0, 4], [0, 3], [0, 2], [1, 2], [2, 2]]}, {"player": 1, "cells": [[4, 5], [5, 5], [6, 5], [6, 6]]}], "note": "turn 9"},
+      {"clear": [[2, 4]], "set": [[4, 1, "food"]], "paths": [{"player": 0, "cells": [[2, 4], [1, 4], [0, 4], [0, 3], [0, 2], [1, 2], [2, 2]]}, {"player": 1, "cells": [[3, 5], [4, 5], [5, 5], [6, 5]]}], "note": "turn 10: the candidate eats"},
+      {"paths": [{"player": 0, "cells": [[2, 3], [2, 4], [1, 4], [0, 4], [0, 3], [0, 2], [1, 2]]}, {"player": 1, "cells": [[3, 6], [3, 5], [4, 5], [5, 5]]}], "note": "turn 11"},
+      {"paths": [{"player": 0, "cells": [[3, 3], [2, 3], [2, 4], [1, 4], [0, 4], [0, 3], [0, 2]]}, {"player": 1, "cells": [[4, 6], [3, 6], [3, 5], [4, 5]]}], "note": "turn 12"},
+      {"clear": [[3, 2]], "set": [[9, 2, "food"]], "paths": [{"player": 0, "cells": [[3, 2], [3, 3], [2, 3], [2, 4], [1, 4], [0, 4], [0, 3], [0, 2]]}, {"player": 1, "cells": [[4, 5], [4, 6], [3, 6], [3, 5]]}], "note": "turn 13: the candidate eats"},
+      {"paths": [{"player": 0, "cells": [[4, 2], [3, 2], [3, 3], [2, 3], [2, 4], [1, 4], [0, 4], [0, 3]]}, {"player": 1, "cells": [[4, 4], [4, 5], [4, 6], [3, 6]]}], "note": "turn 14"},
+      {"clear": [[4, 1]], "set": [[6, 3, "food"]], "paths": [{"player": 0, "cells": [[4, 1], [4, 2], [3, 2], [3, 3], [2, 3], [2, 4], [1, 4], [0, 4], [0, 3]]}, {"player": 1, "cells": [[5, 4], [4, 4], [4, 5], [4, 6]]}], "note": "turn 15: the candidate eats"},
+      {"set": [[5, 9, "food"]], "paths": [{"player": 0, "cells": [[5, 1], [4, 1], [4, 2], [3, 2], [3, 3], [2, 3], [2, 4], [1, 4], [0, 4]]}, {"player": 1, "cells": [[5, 5], [5, 4], [4, 4], [4, 5]]}], "note": "turn 16"},
+      {"set": [[1, 7, "food"]], "paths": [{"player": 0, "cells": [[5, 2], [5, 1], [4, 1], [4, 2], [3, 2], [3, 3], [2, 3], [2, 4], [1, 4]]}, {"player": 1, "cells": [[5, 6], [5, 5], [5, 4], [4, 4]]}], "note": "turn 17"},
+      {"paths": [{"player": 0, "cells": [[5, 3], [5, 2], [5, 1], [4, 1], [4, 2], [3, 2], [3, 3], [2, 3], [2, 4]]}, {"player": 1, "cells": [[6, 6], [5, 6], [5, 5], [5, 4]]}], "note": "turn 18"},
+      {"clear": [[6, 3]], "set": [[3, 4, "food"]], "paths": [{"player": 0, "cells": [[6, 3], [5, 3], [5, 2], [5, 1], [4, 1], [4, 2], [3, 2], [3, 3], [2, 3], [2, 4]]}, {"player": 1, "cells": [[6, 5], [6, 6], [5, 6], [5, 5]]}], "note": "turn 19: the candidate eats"},
+      {"paths": [{"player": 0, "cells": [[7, 3], [6, 3], [5, 3], [5, 2], [5, 1], [4, 1], [4, 2], [3, 2], [3, 3], [2, 3]]}, {"player": 1, "cells": [[6, 4], [6, 5], [6, 6], [5, 6]]}], "note": "turn 20"},
+      {"paths": [{"player": 0, "cells": [[7, 4], [7, 3], [6, 3], [5, 3], [5, 2], [5, 1], [4, 1], [4, 2], [3, 2], [3, 3]]}, {"player": 1, "cells": [[5, 4], [6, 4], [6, 5], [6, 6]]}], "note": "turn 21"},
+      {"clear": [[8, 4]], "set": [[7, 6, "food"]], "paths": [{"player": 0, "cells": [[8, 4], [7, 4], [7, 3], [6, 3], [5, 3], [5, 2], [5, 1], [4, 1], [4, 2], [3, 2], [3, 3]]}], "note": "turn 22: the candidate eats, the incumbent's snake runs into the candidate's"}
+    ],
+    "result": {"winner": 0, "note": "The incumbent's snake ran into the candidate's on turn 22"}
+   }
+  ]}
+]}

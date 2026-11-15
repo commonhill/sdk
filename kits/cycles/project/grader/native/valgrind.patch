@@ -1,0 +1,1773 @@
+diff --git a/VEX/priv/guest_amd64_helpers.c b/VEX/priv/guest_amd64_helpers.c
+index e73845d5d..92008f2c8 100644
+--- a/VEX/priv/guest_amd64_helpers.c
++++ b/VEX/priv/guest_amd64_helpers.c
+@@ -3854,38 +3854,32 @@ ULong amd64g_calculate_pclmul(ULong a, ULong b, ULong which)
+ }
+ 
+ 
++/* Commonhill: the guest's time-stamp counter is deterministic: it starts at
++   0 and steps by 1024 a read (rdtsc or rdtscp), and TSC_AUX (rdtscp's ecx)
++   is 0. The host's counter would be a clock, which differs from run to
++   run. */
++static ULong amd64g_tsc = 0;
++
+ /* CALLED FROM GENERATED CODE */
+ /* DIRTY HELPER (non-referentially-transparent) */
+-/* Horrible hack.  On non-amd64 platforms, return 1. */
+ ULong amd64g_dirtyhelper_RDTSC ( void )
+ {
+-#  if defined(__x86_64__)
+-   UInt  eax, edx;
+-   __asm__ __volatile__("rdtsc" : "=a" (eax), "=d" (edx));
+-   return (((ULong)edx) << 32) | ((ULong)eax);
+-#  else
+-   return 1ULL;
+-#  endif
++   amd64g_tsc += 1024;
++   return amd64g_tsc;
+ }
+ 
+ /* CALLED FROM GENERATED CODE */
+ /* DIRTY HELPER (non-referentially-transparent) */
+-/* Horrible hack.  On non-amd64 platforms, return 1. */
+ /* This uses a different calling convention from _RDTSC just above
+    only because of the difficulty of returning 96 bits from a C
+    function -- RDTSC returns 64 bits and so is simple by comparison,
+    on amd64. */
+ void amd64g_dirtyhelper_RDTSCP ( VexGuestAMD64State* st )
+ {
+-#  if defined(__x86_64__)
+-   UInt eax, ecx, edx;
+-   __asm__ __volatile__("rdtscp" : "=a" (eax), "=d" (edx), "=c" (ecx));
+-   st->guest_RAX = (ULong)eax;
+-   st->guest_RCX = (ULong)ecx;
+-   st->guest_RDX = (ULong)edx;
+-#  else
+-   /* Do nothing. */
+-#  endif
++   amd64g_tsc += 1024;
++   st->guest_RAX = amd64g_tsc & 0xFFFFFFFFULL;
++   st->guest_RCX = 0;
++   st->guest_RDX = amd64g_tsc >> 32;
+ }
+ 
+ /* CALLED FROM GENERATED CODE */
+diff --git a/cachegrind/Makefile.am b/cachegrind/Makefile.am
+index 6ab8fbad9..b8911e658 100644
+--- a/cachegrind/Makefile.am
++++ b/cachegrind/Makefile.am
+@@ -32,16 +32,23 @@ CACHEGRIND_SOURCES_COMMON = \
+ 	cg_main.c \
+ 	cg_arch.c
+ 
++# Commonhill: callgrind's cycle estimation (cycledecode*.c and the cost
++# tables), compiled in from callgrind/ unchanged, with Capstone.
++CACHEGRIND_CFLAGS_COMMON = -I$(top_srcdir)/callgrind
++
+ cachegrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_SOURCES      = \
+-	$(CACHEGRIND_SOURCES_COMMON)
++	$(CACHEGRIND_SOURCES_COMMON) \
++	cg_cycledecode.c \
++	cg_cycledecode_capstone.c
+ cachegrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CPPFLAGS     = \
+ 	$(AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+ cachegrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CFLAGS       = $(LTO_CFLAGS) \
+-	$(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
++	$(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@) $(CACHEGRIND_CFLAGS_COMMON) \
++	@CAPSTONE_CFLAGS@ @CODSPEED_C_STD@
+ cachegrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_DEPENDENCIES = \
+-	$(TOOL_DEPENDENCIES_@VGCONF_PLATFORM_PRI_CAPS@)
++	$(TOOL_DEPENDENCIES_@VGCONF_PLATFORM_PRI_CAPS@) @CAPSTONE_LIBS@
+ cachegrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDADD        = \
+-	$(TOOL_LDADD_@VGCONF_PLATFORM_PRI_CAPS@)
++	$(TOOL_LDADD_@VGCONF_PLATFORM_PRI_CAPS@) @CAPSTONE_LIBS@
+ cachegrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDFLAGS      = \
+ 	$(TOOL_LDFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+ cachegrind_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LINK = \
+diff --git a/cachegrind/cg_cycledecode.c b/cachegrind/cg_cycledecode.c
+new file mode 100644
+index 000000000..9be7f6bdb
+--- /dev/null
++++ b/cachegrind/cg_cycledecode.c
+@@ -0,0 +1,4 @@
++/* Commonhill: callgrind's cycle estimation (the CodSpeed fork's decoder and
++   cost table), compiled into Cachegrind unchanged. GPL-3.0-or-later, like
++   Valgrind. */
++#include "../callgrind/cycledecode.c"
+diff --git a/cachegrind/cg_cycledecode_capstone.c b/cachegrind/cg_cycledecode_capstone.c
+new file mode 100644
+index 000000000..2423761bf
+--- /dev/null
++++ b/cachegrind/cg_cycledecode_capstone.c
+@@ -0,0 +1,3 @@
++/* Commonhill: callgrind's Capstone bridge for its cycle estimation, compiled
++   into Cachegrind unchanged. GPL-3.0-or-later, like Valgrind. */
++#include "../callgrind/cycledecode_capstone.c"
+diff --git a/cachegrind/cg_main.c b/cachegrind/cg_main.c
+index ee3e91c6f..2368d68aa 100644
+--- a/cachegrind/cg_main.c
++++ b/cachegrind/cg_main.c
+@@ -42,11 +42,13 @@
+ #include "pub_tool_xarray.h"
+ #include "pub_tool_clientstate.h"
+ #include "pub_tool_machine.h"      // VG_(fnptr_to_fnentry)
++#include "pub_tool_hill.h"         // Commonhill's report
+ 
+ #include "cachegrind.h"
+ #include "cg_arch.h"
+ #include "cg_sim.c"
+ #include "cg_branchpred.c"
++#include "cycledecode.h"           // callgrind's (Commonhill: -I callgrind)
+ 
+ /*------------------------------------------------------------*/
+ /*--- Constants                                            ---*/
+@@ -63,6 +65,11 @@ static Bool  clo_cache_sim  = False; /* do cache simulation? */
+ static Bool  clo_branch_sim = False; /* do branch simulation? */
+ static Bool  clo_instr_at_start = True; /* instrument at startup? */
+ static const HChar* clo_cachegrind_out_file = "cachegrind.out.%p";
++/* Commonhill: per-instruction cycle estimation (the Ct and Cl events, from
++   the CodSpeed fork's callgrind/cycledecode.c and its cost table), and a
++   cap on the instructions run (0 for none). */
++static Bool  clo_cycle_estimation = False;
++static ULong clo_max_instructions = 0;
+ 
+ /*------------------------------------------------------------*/
+ /*--- Cachesim configuration                               ---*/
+@@ -110,6 +117,8 @@ typedef struct {
+    CacheCC  Dw;  /* Data write/modify counts */
+    BranchCC Bc;  /* Conditional branch counts */
+    BranchCC Bi;  /* Indirect branch counts */
++   ULong    Ct;  /* Estimated reciprocal-throughput cost, centi-cycles */
++   ULong    Cl;  /* Estimated latency cost, centi-cycles */
+ } LineCC;
+ 
+ // First compare file, then fn, then line.
+@@ -146,6 +155,8 @@ struct _InstrInfo {
+    Addr    instr_addr;
+    UChar   instr_len;
+    LineCC* parent;         // parent line-CC
++   UInt    ct;            // estimated reciprocal throughput, centi-cycles
++   UInt    cl;            // estimated latency, centi-cycles
+ };
+ 
+ typedef struct _SB_info SB_info;
+@@ -285,6 +296,8 @@ static LineCC* get_lineCC(Addr origAddr)
+       lineCC->Bc.mp    = 0;
+       lineCC->Bi.b     = 0;
+       lineCC->Bi.mp    = 0;
++      lineCC->Ct       = 0;
++      lineCC->Cl       = 0;
+       VG_(OSetGen_Insert)(CC_table, lineCC);
+    }
+ 
+@@ -307,28 +320,37 @@ static LineCC* get_lineCC(Addr origAddr)
+  *  Ir    - not known / not important whether it is an IrNoX
+  */
+ 
++// An instruction executed: its read, and its estimated cycles (0 without
++// --cycle-estimation).
++static inline void ir_done(InstrInfo* n)
++{
++   n->parent->Ir.a++;
++   n->parent->Ct += n->ct;
++   n->parent->Cl += n->cl;
++}
++
+ // Only used with --cache-sim=no.
+ static VG_REGPARM(1)
+ void log_1Ir(InstrInfo* n)
+ {
+-   n->parent->Ir.a++;
++   ir_done(n);
+ }
+ 
+ // Only used with --cache-sim=no.
+ static VG_REGPARM(2)
+ void log_2Ir(InstrInfo* n, InstrInfo* n2)
+ {
+-   n->parent->Ir.a++;
+-   n2->parent->Ir.a++;
++   ir_done(n);
++   ir_done(n2);
+ }
+ 
+ // Only used with --cache-sim=no.
+ static VG_REGPARM(3)
+ void log_3Ir(InstrInfo* n, InstrInfo* n2, InstrInfo* n3)
+ {
+-   n->parent->Ir.a++;
+-   n2->parent->Ir.a++;
+-   n3->parent->Ir.a++;
++   ir_done(n);
++   ir_done(n2);
++   ir_done(n3);
+ }
+ 
+ // Generic case for instruction reads: may cross cache lines.
+@@ -340,7 +362,7 @@ void log_1IrGen_0D_cache_access(InstrInfo* n)
+    //             n, n->instr_addr, n->instr_len);
+    cachesim_I1_doref_Gen(n->instr_addr, n->instr_len,
+ 			 &n->parent->Ir.m1, &n->parent->Ir.mL);
+-   n->parent->Ir.a++;
++   ir_done(n);
+ }
+ 
+ static VG_REGPARM(1)
+@@ -350,7 +372,7 @@ void log_1IrNoX_0D_cache_access(InstrInfo* n)
+    //             n, n->instr_addr, n->instr_len);
+    cachesim_I1_doref_NoX(n->instr_addr, n->instr_len,
+ 			 &n->parent->Ir.m1, &n->parent->Ir.mL);
+-   n->parent->Ir.a++;
++   ir_done(n);
+ }
+ 
+ static VG_REGPARM(2)
+@@ -362,10 +384,10 @@ void log_2IrNoX_0D_cache_access(InstrInfo* n, InstrInfo* n2)
+    //            n2, n2->instr_addr, n2->instr_len);
+    cachesim_I1_doref_NoX(n->instr_addr, n->instr_len,
+ 			 &n->parent->Ir.m1, &n->parent->Ir.mL);
+-   n->parent->Ir.a++;
++   ir_done(n);
+    cachesim_I1_doref_NoX(n2->instr_addr, n2->instr_len,
+ 			 &n2->parent->Ir.m1, &n2->parent->Ir.mL);
+-   n2->parent->Ir.a++;
++   ir_done(n2);
+ }
+ 
+ static VG_REGPARM(3)
+@@ -379,13 +401,13 @@ void log_3IrNoX_0D_cache_access(InstrInfo* n, InstrInfo* n2, InstrInfo* n3)
+    //            n3, n3->instr_addr, n3->instr_len);
+    cachesim_I1_doref_NoX(n->instr_addr, n->instr_len,
+ 			 &n->parent->Ir.m1, &n->parent->Ir.mL);
+-   n->parent->Ir.a++;
++   ir_done(n);
+    cachesim_I1_doref_NoX(n2->instr_addr, n2->instr_len,
+ 			 &n2->parent->Ir.m1, &n2->parent->Ir.mL);
+-   n2->parent->Ir.a++;
++   ir_done(n2);
+    cachesim_I1_doref_NoX(n3->instr_addr, n3->instr_len,
+ 			 &n3->parent->Ir.m1, &n3->parent->Ir.mL);
+-   n3->parent->Ir.a++;
++   ir_done(n3);
+ }
+ 
+ static VG_REGPARM(3)
+@@ -396,7 +418,7 @@ void log_1IrNoX_1Dr_cache_access(InstrInfo* n, Addr data_addr, Word data_size)
+    //            n, n->instr_addr, n->instr_len, data_addr, data_size);
+    cachesim_I1_doref_NoX(n->instr_addr, n->instr_len,
+ 			 &n->parent->Ir.m1, &n->parent->Ir.mL);
+-   n->parent->Ir.a++;
++   ir_done(n);
+ 
+    cachesim_D1_doref(data_addr, data_size, 
+                      &n->parent->Dr.m1, &n->parent->Dr.mL);
+@@ -411,7 +433,7 @@ void log_1IrNoX_1Dw_cache_access(InstrInfo* n, Addr data_addr, Word data_size)
+    //            n, n->instr_addr, n->instr_len, data_addr, data_size);
+    cachesim_I1_doref_NoX(n->instr_addr, n->instr_len,
+ 			 &n->parent->Ir.m1, &n->parent->Ir.mL);
+-   n->parent->Ir.a++;
++   ir_done(n);
+ 
+    cachesim_D1_doref(data_addr, data_size, 
+                      &n->parent->Dw.m1, &n->parent->Dw.mL);
+@@ -688,6 +710,14 @@ InstrInfo* setup_InstrInfo ( CgState* cgs, Addr instr_addr, UInt instr_len )
+    i_node->instr_addr = instr_addr;
+    i_node->instr_len  = instr_len;
+    i_node->parent     = get_lineCC(instr_addr);
++   i_node->ct         = 0;
++   i_node->cl         = 0;
++   if (clo_cycle_estimation) {
++      unsigned ct, cl;
++      clg_cycle_cost((const unsigned char*)instr_addr, instr_len, &ct, &cl);
++      i_node->ct = ct;
++      i_node->cl = cl;
++   }
+    cgs->sbInfo_i++;
+    return i_node;
+ }
+@@ -1047,6 +1077,20 @@ void addEvent_Bi ( CgState* cgs, InstrInfo* inode, IRAtom* whereTo )
+ ////////////////////////////////////////////////////////////
+ 
+ 
++/* Commonhill: instructions counted a superblock at a time, on entry, for
++   the cap (--max-instructions). */
++static ULong sb_instructions = 0;
++
++#define EXIT_OVER 137
++
++static void cg_over ( void )
++{
++   HChar line[64];
++   VG_(sprintf)(line, "over %llu\n", clo_max_instructions);
++   VG_(hill_report)(line);
++   VG_(exit)(EXIT_OVER);
++}
++
+ static
+ IRSB* cg_instrument ( VgCallbackClosure* closure,
+                       IRSB* sbIn, 
+@@ -1100,6 +1144,32 @@ IRSB* cg_instrument ( VgCallbackClosure* closure,
+    cgs.sbInfo      = get_SB_info(sbIn, (Addr)closure->readdr);
+    cgs.sbInfo_i    = 0;
+ 
++   // Commonhill: the cap. Each superblock adds its instructions on entry to
++   // a counter, and a counter over --max-instructions ends the run (cg_over).
++   if (clo_max_instructions > 0) {
++      IRTemp before = newIRTemp(cgs.sbOut->tyenv, Ity_I64);
++      IRTemp after  = newIRTemp(cgs.sbOut->tyenv, Ity_I64);
++      IRTemp over   = newIRTemp(cgs.sbOut->tyenv, Ity_I1);
++      IRExpr* at    = mkIRExpr_HWord((HWord)&sb_instructions);
++      addStmtToIRSB(cgs.sbOut,
++         IRStmt_WrTmp(before, IRExpr_Load(Iend_LE, Ity_I64, at)));
++      addStmtToIRSB(cgs.sbOut,
++         IRStmt_WrTmp(after,
++                      IRExpr_Binop(Iop_Add64, IRExpr_RdTmp(before),
++                         IRExpr_Const(IRConst_U64(cgs.sbInfo->n_instrs)))));
++      addStmtToIRSB(cgs.sbOut, IRStmt_Store(Iend_LE, at, IRExpr_RdTmp(after)));
++      addStmtToIRSB(cgs.sbOut,
++         IRStmt_WrTmp(over,
++                      IRExpr_Binop(Iop_CmpLT64U,
++                         IRExpr_Const(IRConst_U64(clo_max_instructions)),
++                         IRExpr_RdTmp(after))));
++      IRDirty* d = unsafeIRDirty_0_N(0, "cg_over",
++                                     VG_(fnptr_to_fnentry)(&cg_over),
++                                     mkIRExprVec_0());
++      d->guard = IRExpr_RdTmp(over);
++      addStmtToIRSB(cgs.sbOut, IRStmt_Dirty(d));
++   }
++
+    if (DEBUG_CG)
+       VG_(printf)("\n\n---------- cg_instrument ----------\n");
+ 
+@@ -1384,6 +1454,54 @@ static CacheCC  Dw_total;
+ static BranchCC Bc_total;
+ static BranchCC Bi_total;
+ 
++/* Commonhill: the report's counts, in this order:
++   Ir I1mr ILmr Dr D1mr DLmr Dw D1mw DLmw Bc Bcm Bi Bim Ct Cl. */
++#define N_REPORTED 15
++
++static void sum_counts(ULong out[N_REPORTED])
++{
++   LineCC* l;
++   VG_(memset)(out, 0, N_REPORTED * sizeof(ULong));
++   VG_(OSetGen_ResetIter)(CC_table);
++   while ( (l = VG_(OSetGen_Next)(CC_table)) ) {
++      out[0]  += l->Ir.a;  out[1]  += l->Ir.m1; out[2]  += l->Ir.mL;
++      out[3]  += l->Dr.a;  out[4]  += l->Dr.m1; out[5]  += l->Dr.mL;
++      out[6]  += l->Dw.a;  out[7]  += l->Dw.m1; out[8]  += l->Dw.mL;
++      out[9]  += l->Bc.b;  out[10] += l->Bc.mp;
++      out[11] += l->Bi.b;  out[12] += l->Bi.mp;
++      out[13] += l->Ct;    out[14] += l->Cl;
++   }
++}
++
++/* Report "<word> <the counts>". */
++static void report_counts(const HChar* word)
++{
++   ULong c[N_REPORTED];
++   HChar line[16 + N_REPORTED * 21];
++   sum_counts(c);
++   Int n = VG_(sprintf)(line, "%s", word);
++   for (Int i = 0; i < N_REPORTED; i++)
++      n += VG_(sprintf)(line + n, " %llu", c[i]);
++   VG_(sprintf)(line + n, "\n");
++   VG_(hill_report)(line);
++}
++
++/* At the first read of each input frame (--hill-frames=yes). */
++static void report_item(void)
++{
++   report_counts("item");
++}
++
++/* At the end of a reporting run: the totals, or over the cap. */
++static void report_totals(void)
++{
++   ULong c[N_REPORTED];
++   sum_counts(c);
++   if (clo_max_instructions > 0 && c[0] > clo_max_instructions)
++      cg_over();
++   report_counts("totals");
++}
++
+ static void fprint_CC_table_and_calc_totals(void)
+ {
+    Int     i;
+@@ -1585,6 +1703,11 @@ static void cg_fini(Int exitcode)
+          LL_total, LL_total_r, LL_total_w;
+    Int l1, l2, l3;
+ 
++   if (VG_(hill_reporting)()) {
++      report_totals();
++      return;
++   }
++
+    fprint_CC_table_and_calc_totals();
+ 
+    if (VG_(clo_verbosity) == 0) 
+@@ -1770,6 +1893,9 @@ static Bool cg_process_cmd_line_option(const HChar* arg)
+    else if VG_BOOL_CLO(arg, "--cache-sim",  clo_cache_sim)  {}
+    else if VG_BOOL_CLO(arg, "--branch-sim", clo_branch_sim) {}
+    else if VG_BOOL_CLO(arg, "--instr-at-start", clo_instr_at_start) {}
++   else if VG_BOOL_CLO(arg, "--cycle-estimation", clo_cycle_estimation) {}
++   else if VG_BINT_CLO(arg, "--max-instructions", clo_max_instructions,
++                       0, 0x7fffffffffffffffLL) {}
+    else
+       return False;
+ 
+@@ -1783,6 +1909,10 @@ static void cg_print_usage(void)
+ "    --cache-sim=yes|no               collect cache stats? [no]\n"
+ "    --branch-sim=yes|no              collect branch prediction stats? [no]\n"
+ "    --instr-at-start=yes|no          instrument at start? [yes]\n"
++"    --cycle-estimation=yes|no        estimate each instruction's cycles\n"
++"                                     (the Ct and Cl events)? [no]\n"
++"    --max-instructions=<n>           end the run over n instructions,\n"
++"                                     status 137 (0: no cap) [0]\n"
+    );
+    VG_(print_cache_clo_opts)();
+ }
+@@ -1935,6 +2065,17 @@ static void cg_post_clo_init(void)
+    if (!clo_instr_at_start) {
+       instr_enabled = False;
+    }
++
++   if (clo_cycle_estimation) {
++      ClgCdInit st = clg_cycledecode_init();
++      if (st != CLG_CD_OK) {
++         VG_(umsg)("Cachegrind: --cycle-estimation=yes: %s\n",
++                   clg_cycledecode_init_str(st));
++         VG_(exit)(1);
++      }
++   }
++   if (VG_(hill_reporting)())
++      VG_(hill_set_item_hook)(report_item);
+ }
+ 
+ VG_DETERMINE_INTERFACE_VERSION(cg_pre_clo_init)
+diff --git a/configure.ac b/configure.ac
+index 057631167..b420d318b 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -622,7 +622,10 @@ case "$ARCH_MAX-$VGCONF_OS" in
+            VGCONF_ARCH_SEC=""
+ 	   VGCONF_PLATFORM_PRI_CAPS="AMD64_LINUX"
+ 	   VGCONF_PLATFORM_SEC_CAPS=""
+-           valt_load_address_pri_norml="0x58000000"
++           # Commonhill: just above the client's space (VG_CLIENT_SPACE_END),
++           # so that nothing of Valgrind's is below it; below 2 GiB, where
++           # the tools' static links can still use 32-bit absolute addresses.
++           valt_load_address_pri_norml="0x70000000"
+            valt_load_address_pri_inner="0x38000000"
+ 	elif test x$vg_cv_only32bit = xyes; then
+ 	   VGCONF_ARCH_PRI="x86"
+diff --git a/coregrind/Makefile.am b/coregrind/Makefile.am
+index e7921ffaa..802e4614a 100644
+--- a/coregrind/Makefile.am
++++ b/coregrind/Makefile.am
+@@ -208,6 +208,7 @@ noinst_HEADERS = \
+ 	pub_core_extension.h    \
+ 	pub_core_gdbserver.h	\
+ 	pub_core_guest.h	\
++	pub_core_hill.h		\
+ 	pub_core_hashtable.h	\
+ 	pub_core_initimg.h	\
+ 	pub_core_inner.h	\
+@@ -295,6 +296,7 @@ noinst_HEADERS = \
+ 	m_syswrap/priv_syswrap-darwin.h \
+ 	m_syswrap/priv_syswrap-solaris.h \
+ 	m_syswrap/priv_syswrap-main.h \
++	m_syswrap/priv_syswrap-hill.h \
+ 	m_syswrap/priv_syswrap-xen.h \
+ 	m_ume/priv_ume.h \
+ 	vgdb.h
+@@ -476,6 +478,7 @@ COREGRIND_SOURCES_COMMON = \
+ 	m_syswrap/syscall-x86-solaris.S \
+ 	m_syswrap/syscall-amd64-solaris.S \
+ 	m_syswrap/syswrap-main.c \
++	m_syswrap/syswrap-hill.c \
+ 	m_syswrap/syswrap-generic.c \
+ 	m_syswrap/syswrap-linux.c \
+ 	m_syswrap/syswrap-linux-variants.c \
+diff --git a/coregrind/m_aspacemgr/aspacemgr-linux.c b/coregrind/m_aspacemgr/aspacemgr-linux.c
+index e37507631..0a3f58b56 100644
+--- a/coregrind/m_aspacemgr/aspacemgr-linux.c
++++ b/coregrind/m_aspacemgr/aspacemgr-linux.c
+@@ -1890,8 +1890,13 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
+    aspacem_vStart -= 0x20000000; // 512M
+ #  endif
+ 
++#  if defined(VGP_amd64_linux)
++   /* Commonhill: the client's stack is the top of its space. */
++   suggested_clstack_end = VG_CLIENT_SPACE_END - 1;
++#  else
+    suggested_clstack_end = aspacem_maxAddr - 16*1024*1024ULL
+                                            + VKI_PAGE_SIZE;
++#  endif
+ 
+ #endif /* #else of 'defined(VGO_solaris)' */
+    // --- (end) --------------------------------------------
+@@ -1964,7 +1969,7 @@ Addr VG_(am_startup) ( Addr sp_at_startup )
+ 
+ /* Query aspacem to ask where a mapping should go. */
+ 
+-Addr VG_(am_get_advisory) ( const MapRequest*  req, 
++static Addr get_advisory ( const MapRequest*  req,
+                             Bool  forClient, 
+                             /*OUT*/Bool* ok )
+ {
+@@ -2237,6 +2242,23 @@ Addr VG_(am_get_advisory) ( const MapRequest*  req,
+ #undef ADVISE_ADDRESS_ALIGNED
+ }
+ 
++Addr VG_(am_get_advisory) ( const MapRequest*  req,
++                            Bool  forClient,
++                            /*OUT*/Bool* ok )
++{
++   Addr advised = get_advisory( req, forClient, ok );
++#  if defined(VGP_amd64_linux)
++   /* Commonhill: a client mapping ends below VG_CLIENT_SPACE_END. */
++   if (forClient && *ok
++       && (advised >= VG_CLIENT_SPACE_END
++           || req->len > VG_CLIENT_SPACE_END - advised)) {
++      *ok = False;
++      return 0;
++   }
++#  endif
++   return advised;
++}
++
+ /* Convenience wrapper for VG_(am_get_advisory) for client floating or
+    fixed requests.  If start is zero, a floating request is issued; if
+    nonzero, a fixed request at that address is issued.  Same comments
+diff --git a/coregrind/m_initimg/initimg-linux.c b/coregrind/m_initimg/initimg-linux.c
+index c3838802d..67e81c0c3 100644
+--- a/coregrind/m_initimg/initimg-linux.c
++++ b/coregrind/m_initimg/initimg-linux.c
+@@ -49,6 +49,7 @@
+ #include "pub_core_threadstate.h"     /* ThreadArchState */
+ #include "pub_core_pathscan.h"        /* find_executable */
+ #include "pub_core_initimg.h"         /* self */
++#include "pub_core_hill.h"            /* HILL_* */
+ 
+ /* --- !!! --- EXTERNAL HEADERS start --- !!! --- */
+ #define _GNU_SOURCE
+@@ -411,6 +412,56 @@ struct auxv *find_auxv(UWord* sp)
+    return (struct auxv *)sp;
+ }
+ 
++#if defined(VGP_amd64_linux)
++/* Commonhill: under the hill report the program starts the same on every
++   host.  Its auxiliary vector is this fixed one instead of a copy of the
++   host kernel's, whose entries (their number too) and values come from the
++   kernel's version, the CPU and the account: the copy loop below still
++   fills in the executable's own entries (AT_PHDR, AT_PHNUM, AT_BASE,
++   AT_ENTRY), AT_RANDOM's bytes and the strings.  AT_HWCAP is CPUID leaf 1's
++   EDX in the table VEX answers CPUID from (the hwcaps are pinned too,
++   m_machine.c).  The host's vDSO is unmapped as the copy loop would. */
++static struct auxv hill_auxv_buf[18];
++
++static const struct auxv* hill_auxv ( const struct auxv* host )
++{
++   static const HChar platform[] = "x86_64";
++   static UChar random_bytes[16]; /* replaced: --deterministic-rng=yes */
++   const struct auxv* a;
++   Int n = 0;
++   for (a = host; a->a_type != AT_NULL; a++)
++      if (a->a_type == AT_SYSINFO_EHDR) {
++         const NSegment* ehdrseg = VG_(am_find_nsegment)((Addr)a->u.a_ptr);
++         vg_assert(ehdrseg);
++         VG_(am_munmap_valgrind)(ehdrseg->start,
++                                 ehdrseg->end - ehdrseg->start);
++      }
++#  define HILL_AUX(t, v) \
++      (hill_auxv_buf[n].a_type = (t), hill_auxv_buf[n++].u.a_val = (Word)(v))
++   HILL_AUX(AT_PHDR, 1);
++   HILL_AUX(AT_PHENT, sizeof(Elf64_Phdr));
++   HILL_AUX(AT_PHNUM, 1);
++   HILL_AUX(AT_PAGESZ, VKI_PAGE_SIZE);
++   HILL_AUX(AT_BASE, 0);
++   HILL_AUX(AT_FLAGS, 0);
++   HILL_AUX(AT_ENTRY, 0);
++   HILL_AUX(AT_UID, HILL_ID);
++   HILL_AUX(AT_EUID, HILL_ID);
++   HILL_AUX(AT_GID, HILL_ID);
++   HILL_AUX(AT_EGID, HILL_ID);
++   HILL_AUX(AT_SECURE, 0);
++   HILL_AUX(AT_CLKTCK, 100);
++   HILL_AUX(AT_HWCAP, 0xbfebfbff);
++   HILL_AUX(AT_RANDOM, random_bytes);
++   HILL_AUX(AT_PLATFORM, platform);
++   HILL_AUX(AT_EXECFN, 0);
++   HILL_AUX(AT_NULL, 0);
++#  undef HILL_AUX
++   vg_assert(n <= sizeof(hill_auxv_buf) / sizeof(hill_auxv_buf[0]));
++   return hill_auxv_buf;
++}
++#endif
++
+ static 
+ Addr setup_client_stack( void*  init_sp,
+                          HChar** orig_envp,
+@@ -443,12 +494,21 @@ Addr setup_client_stack( void*  init_sp,
+    Addr tables_end;		/* one past the table mapping */
+    Addr strings_start;		/* start of the string mapping */
+    Int i;
++   const HChar* exename = VG_(args_the_exename); /* argv[0], AT_EXECFN */
+ 
+    vg_assert(VG_IS_PAGE_ALIGNED(clstack_end+1));
+    vg_assert( VG_(args_for_client) );
+ 
+    /* use our own auxv as a prototype */
+    orig_auxv = find_auxv(init_sp);
++#  if defined(VGP_amd64_linux)
++   /* Commonhill: no environment, a fixed name and a fixed auxv. */
++   if (VG_(clo_hill_report_fd) >= 0) {
++      orig_envp = NULL;
++      orig_auxv = hill_auxv(orig_auxv);
++      exename = HILL_EXENAME;
++   }
++#  endif
+ 
+    /* ==================== compute sizes ==================== */
+ 
+@@ -468,7 +528,7 @@ Addr setup_client_stack( void*  init_sp,
+    }
+ 
+    /* now scan the args we're given... */
+-   stringsize += VG_(strlen)( VG_(args_the_exename) ) + 1;
++   stringsize += VG_(strlen)( exename ) + 1;
+ 
+    for (i = 0; i < VG_(sizeXA)( VG_(args_for_client) ); i++) {
+       argc++;
+@@ -493,7 +553,7 @@ Addr setup_client_stack( void*  init_sp,
+       else if (cauxv->a_type == AT_RANDOM)
+ 	 stringsize += 16;
+       else if (cauxv->a_type == AT_EXECFN)
+-	 stringsize += VG_(strlen)(VG_(args_the_exename)) + 1;
++	 stringsize += VG_(strlen)(exename) + 1;
+       auxsize += sizeof(*cauxv);
+    }
+ 
+@@ -658,7 +718,7 @@ Addr setup_client_stack( void*  init_sp,
+    if (info->interp_args)
+       *ptr++ = (Addr)copy_str(&strtab, info->interp_args);
+ 
+-   *ptr++ = (Addr)copy_str(&strtab, VG_(args_the_exename));
++   *ptr++ = (Addr)copy_str(&strtab, exename);
+ 
+    for (i = 0; i < VG_(sizeXA)( VG_(args_for_client) ); i++) {
+       *ptr++ = (Addr)copy_str(
+@@ -1011,7 +1071,7 @@ Addr setup_client_stack( void*  init_sp,
+ 
+          case AT_EXECFN:
+             /* points to the executable filename */
+-            auxv->u.a_ptr = copy_str(&strtab, VG_(args_the_exename));
++            auxv->u.a_ptr = copy_str(&strtab, exename);
+             break;
+ 
+          default:
+@@ -1202,6 +1262,8 @@ IIFinaliseImageInfo VG_(ii_create_image)( IICreateImageInfo iicii,
+       if (szB < m1) szB = m1;
+       if (szB > m16) szB = m16;
+       if (VG_(clo_main_stacksize) > 0) szB = VG_(clo_main_stacksize);
++      /* Commonhill: the host's limit doesn't size the layout. */
++      if (VG_(clo_hill_report_fd) >= 0) szB = HILL_STACK_SZB;
+       if (szB < m1) szB = m1;
+       if (szB > (SizeT)-1 - STARTUP_REGION_SZB - (VKI_PAGE_SIZE - 1)) {
+          VG_(printf)("valgrind: "
+@@ -1255,6 +1317,8 @@ IIFinaliseImageInfo VG_(ii_create_image)( IICreateImageInfo iicii,
+       VG_(debugLog)(1, "initimg", "Setup client data (brk) segment\n");
+       if (dseg_max_size < m1) dseg_max_size = m1;
+       if (dseg_max_size > m8) dseg_max_size = m8;
++      /* Commonhill: nor here. */
++      if (VG_(clo_hill_report_fd) >= 0) dseg_max_size = HILL_DATA_SZB;
+       dseg_max_size = VG_PGROUNDUP(dseg_max_size);
+ 
+       setup_client_dataseg( dseg_max_size );
+diff --git a/coregrind/m_machine.c b/coregrind/m_machine.c
+index 2c21fbeb3..0b58efbc3 100644
+--- a/coregrind/m_machine.c
++++ b/coregrind/m_machine.c
+@@ -2406,6 +2406,31 @@ void VG_(machine_get_VexArchInfo)( /*OUT*/VexArch* pVa,
+    if (pVai) *pVai = vai;
+ }
+ 
++#if defined(VGA_amd64)
++/* Commonhill: under the hill report, VEX sees the same CPU on every host:
++   it picks the table it answers CPUID from, and which instructions it
++   decodes, from these.  They are Haswell's; a host without one of them
++   can't run the kit, and a host's newer ones (RDSEED, FMA4) are hidden. */
++void VG_(machine_hill_pin_hwcaps) ( void )
++{
++   const UInt pinned = VEX_HWCAPS_AMD64_SSE3 | VEX_HWCAPS_AMD64_SSSE3
++                       | VEX_HWCAPS_AMD64_CX16 | VEX_HWCAPS_AMD64_LZCNT
++                       | VEX_HWCAPS_AMD64_AVX | VEX_HWCAPS_AMD64_RDTSCP
++                       | VEX_HWCAPS_AMD64_BMI | VEX_HWCAPS_AMD64_AVX2
++                       | VEX_HWCAPS_AMD64_RDRAND | VEX_HWCAPS_AMD64_F16C
++                       | VEX_HWCAPS_AMD64_FMA3;
++   vg_assert(hwcaps_done);
++   if ((vai.hwcaps & pinned) != pinned) {
++      VG_(printf)("valgrind: the kit needs an x86-64 host with Haswell's "
++                  "features (%s); this one has %s.\n",
++                  LibVEX_ppVexHwCaps(VexArchAMD64, pinned),
++                  LibVEX_ppVexHwCaps(VexArchAMD64, vai.hwcaps));
++      VG_(exit)(1);
++   }
++   vai.hwcaps = pinned;
++}
++#endif
++
+ 
+ /* Returns the size of the largest guest register that we will
+    simulate in this run.  This depends on both the guest architecture
+diff --git a/coregrind/m_main.c b/coregrind/m_main.c
+index 24ce30a43..1a3601d9f 100644
+--- a/coregrind/m_main.c
++++ b/coregrind/m_main.c
+@@ -67,6 +67,7 @@
+ #if defined(ENABLE_INNER_CLIENT_REQUEST)
+ #include "pub_core_clreq.h"
+ #endif
++#include "pub_core_hill.h"
+ 
+ 
+ /*====================================================================*/
+@@ -109,6 +110,9 @@ static void usage_NORETURN ( int need_help )
+ "                              they do not get under Valgrind\n"
+ "    --deterministic-rng=no|yes serve AT_RANDOM, getrandom() and /dev/urandom\n"
+ "                              and hardware RNG insns from a fixed-seed PRNG [no]\n"
++"    --hill-report-fd=<number> Commonhill: report on this descriptor, and run\n"
++"                              the client under its system call profile [none]\n"
++"    --hill-frames=no|yes      Commonhill: the client's input is framed [no]\n"
+ "    --child-silent-after-fork=no|yes omit child output between fork & exec? [no]\n"
+ "    --vgdb=no|yes|full        activate gdbserver? [yes]\n"
+ "                              full is slower but provides precise watchpoint/step\n"
+@@ -522,6 +526,12 @@ static void process_option (Clo_Mode mode,
+    else if VG_BOOL_CLOM(cloE, arg, "--deterministic-rng",
+                         VG_(clo_deterministic_rng)) {}
+ 
++   // Commonhill (m_syswrap/syswrap-hill.c). Early: the fake /proc files,
++   // which the profile does without, come before the main options.
++   else if VG_INT_CLOM(cloE, arg, "--hill-report-fd",
++                       VG_(clo_hill_report_fd)) {}
++   else if VG_BOOL_CLOM(cloE, arg, "--hill-frames", VG_(clo_hill_frames)) {}
++
+    // Set up VG_(clo_max_stackframe) and VG_(clo_main_stacksize).
+    // These are needed by VG_(ii_create_image), which happens
+    // before main_process_cmd_line_options().
+@@ -1607,6 +1617,14 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
+    VG_(debugLog)(1, "main",
+                     "(early_) Process Valgrind's command line options\n");
+    early_process_cmd_line_options(&need_help);
++#  if defined(VGA_amd64)
++   /* Commonhill: before anything is translated or the client's image is
++      made (vex_archinfo goes to VG_(ii_create_image)). */
++   if (VG_(clo_hill_report_fd) >= 0) {
++      VG_(machine_hill_pin_hwcaps)();
++      VG_(machine_get_VexArchInfo)( NULL, &vex_archinfo );
++   }
++#  endif
+ 
+    // BEGIN HACK
+    // When changing the logic for the VG_(clo_read_inline_info) default,
+@@ -1696,7 +1714,10 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
+ #endif
+ 
+ #if defined(VGO_linux) || defined(VGO_solaris)
+-   if (!need_help) {
++   /* Commonhill: under the profile (--hill-report-fd) the client opens no
++      file, /proc's included, and Valgrind may write none (the sandbox's
++      Landlock): no fake /proc files. */
++   if (!need_help && VG_(clo_hill_report_fd) < 0) {
+       HChar  buf[50];   // large enough
+       HChar  buf2[VG_(mkstemp_fullname_bufsz)(sizeof buf - 1)];
+       Int    fd, r;
+@@ -1858,6 +1879,12 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
+    VG_(print_preamble)(VG_(log_output_sink).type != VgLogTo_File);
+    VG_(debugLog)(1, "main", "...finished the preamble\n");
+ 
++   //--------------------------------------------------------------
++   // Commonhill: the report's descriptor, out of the client's reach
++   //   p: setup_file_descriptors()  [for 'VG_(fd_xxx_limit)']
++   //--------------------------------------------------------------
++   VG_(hill_init)();
++
+    //--------------------------------------------------------------
+    // Init tool part 2: post_clo_init
+    //   p: setup_client_stack()      [for 'VG_(client_arg[cv]']
+diff --git a/coregrind/m_options.c b/coregrind/m_options.c
+index c231ba8d7..28c607843 100644
+--- a/coregrind/m_options.c
++++ b/coregrind/m_options.c
+@@ -125,6 +125,8 @@ const HChar* VG_(clo_trace_children_skip) = NULL;
+ const HChar* VG_(clo_trace_children_skip_by_arg) = NULL;
+ const HChar* VG_(clo_allow_file_caps) = NULL;
+ Bool   VG_(clo_deterministic_rng) = False;
++Int    VG_(clo_hill_report_fd) = -1;
++Bool   VG_(clo_hill_frames) = False;
+ Bool   VG_(clo_child_silent_after_fork) = False;
+ const HChar *VG_(clo_log_fname_unexpanded) = NULL;
+ const HChar *VG_(clo_xml_fname_unexpanded) = NULL;
+diff --git a/coregrind/m_scheduler/scheduler.c b/coregrind/m_scheduler/scheduler.c
+index f2eb95473..7b58ef84b 100644
+--- a/coregrind/m_scheduler/scheduler.c
++++ b/coregrind/m_scheduler/scheduler.c
+@@ -2003,6 +2003,14 @@ Int print_client_message( ThreadId tid, const HChar *format,
+ static
+ void do_client_request ( ThreadId tid )
+ {
++#  if defined(VGP_amd64_linux)
++   /* Commonhill: client requests are ignored, before their arguments are
++      read. Any code can make one, and they would let the client run
++      Valgrind's functions (CLIENT_CALL*), stop the tool's counting or read
++      its state. A request returns the client's own default (its rdx, left
++      as it was), as it would on a CPU. */
++   return;
++#  endif
+    UWord* arg = (UWord*)(Addr)(CLREQ_ARGS(VG_(threads)[tid].arch));
+    UWord req_no = arg[0];
+ 
+diff --git a/coregrind/m_syswrap/priv_syswrap-hill.h b/coregrind/m_syswrap/priv_syswrap-hill.h
+new file mode 100644
+index 000000000..226f4edfd
+--- /dev/null
++++ b/coregrind/m_syswrap/priv_syswrap-hill.h
+@@ -0,0 +1,32 @@
++/*--------------------------------------------------------------------*/
++/*--- Commonhill: the client's system call profile.                ---*/
++/*---                                         priv_syswrap-hill.h ---*/
++/*--------------------------------------------------------------------*/
++
++/*
++   Commonhill's patch to Valgrind (GPL-3.0-or-later, like Valgrind).
++
++   This program is free software; you can redistribute it and/or
++   modify it under the terms of the GNU General Public License as
++   published by the Free Software Foundation; either version 3 of the
++   License, or (at your option) any later version.
++
++   The GNU General Public License is contained in the file COPYING.
++*/
++
++#ifndef __PRIV_SYSWRAP_HILL_H
++#define __PRIV_SYSWRAP_HILL_H
++
++#include "priv_types_n_macros.h"   // SyscallArgs, SyscallStatus
++
++/* Under the profile (--hill-report-fd), before the call's own wrapper:
++   True when the call was answered here (`status` set), False to let it
++   through to its wrapper (syswrap-hill.c). */
++extern Bool ML_(hill_syscall) ( ThreadId tid, SyscallArgs* args,
++                                /*OUT*/SyscallStatus* status );
++
++#endif   // __PRIV_SYSWRAP_HILL_H
++
++/*--------------------------------------------------------------------*/
++/*--- end                                                          ---*/
++/*--------------------------------------------------------------------*/
+diff --git a/coregrind/m_syswrap/syswrap-hill.c b/coregrind/m_syswrap/syswrap-hill.c
+new file mode 100644
+index 000000000..93c2a1c03
+--- /dev/null
++++ b/coregrind/m_syswrap/syswrap-hill.c
+@@ -0,0 +1,427 @@
++/*--------------------------------------------------------------------*/
++/*--- Commonhill: the run's report and the client's system call    ---*/
++/*--- profile.                                     syswrap-hill.c ---*/
++/*--------------------------------------------------------------------*/
++
++/*
++   Commonhill's patch to Valgrind (GPL-3.0-or-later, like Valgrind).
++
++   This program is free software; you can redistribute it and/or
++   modify it under the terms of the GNU General Public License as
++   published by the Free Software Foundation; either version 3 of the
++   License, or (at your option) any later version.
++
++   The GNU General Public License is contained in the file COPYING.
++*/
++
++/* With --hill-report-fd=F, the client runs under Commonhill's `stdio`
++   profile, the one the instruction-count kit's plugin gives a static program
++   (insncap.c), so that everything it can observe is the same on every run:
++
++   - time (clock_gettime, gettimeofday, time, clock_getres) is answered here:
++     every read moves the clock on by a microsecond, the realtime clocks from
++     2026-01-01T00:00:00Z and the others from 0, so a run reads the same times
++     under every tool. Sleeping returns at once. (The time-stamp counter is
++     deterministic in VEX, guest_amd64_helpers.c.)
++   - getrandom fills from a fixed-seed generator.
++   - set_tid_address answers a constant thread id. futex is wait and wake
++     only (plain or with a bitset), on a word in the client's space.
++   - poll reports nothing ready and nothing wrong: otherwise poll on the
++     output would show whether the grader had read it yet, which is a clock.
++   - a thread (clone with CLONE_THREAD) writes "thread" to the report and
++     ends the run with status 136; every other process, signal, socket,
++     timer, resource and file call fails with ENOSYS.
++   - reads are from descriptor 0 only, writes to 1 and 2 only, and mappings
++     anonymous or of descriptor 0.
++
++   Every address the kernel or this file would follow for the client must
++   lie in the client's space, below VG_CLIENT_SPACE_END (where none of
++   Valgrind's memory is), or the call fails with EFAULT; the guard in
++   m_translate.c does the same for the client's own accesses. The report's
++   descriptor itself is moved out of the client's range (VG_(hill_init)).
++
++   With --hill-frames=yes the input is framed, as insncap.c's frames=1: the
++   grader writes it as frames, each an 8-byte little-endian length and that
++   many bytes (a length of 0, or the end, ends the input), and sends the next
++   only after the program's answer to the last. A read returns at most what
++   is left of the current frame, all of it waited for, so what a read returns
++   depends on the program's request and the frames alone. The first read of
++   each frame calls the tool's item hook, which reports its counts then. */
++
++#include "pub_core_basics.h"
++#include "pub_core_vki.h"
++#include "pub_core_vkiscnums.h"
++#include "pub_core_aspacemgr.h"
++#include "pub_core_threadstate.h"
++#include "pub_core_libcbase.h"
++#include "pub_core_libcassert.h"
++#include "pub_core_libcfile.h"
++#include "pub_core_libcprint.h"
++#include "pub_core_options.h"
++#include "pub_core_hill.h"
++#include "pub_core_syscall.h"      // VG_(mk_SysRes_*)
++#include "priv_types_n_macros.h"
++#include "priv_syswrap-hill.h"
++
++#if defined(VGP_amd64_linux)
++
++#define HILL_EXIT_THREAD 136
++#define HILL_TID         2
++#define HILL_BASE_S      1767225600LL      /* 2026-01-01T00:00:00Z */
++#define HILL_NS_PER_S    1000000000LL
++#define HILL_CLOCK_STEP  1000LL            /* ns a clock read moves it on */
++#define HILL_CLOCK_IDS   12                /* Linux's, up to CLOCK_TAI */
++#define HILL_FRAME_CHUNK 65536
++#define HILL_MAP_HUGETLB     0x40000  /* Linux's, which vki doesn't name */
++#define HILL_MADV_HUGEPAGE   14
++#define HILL_MADV_NOHUGEPAGE 15
++#define HILL_MADV_COLLAPSE   25
++
++static Int   report_fd = -1;
++static void  (*item_hook)(void) = NULL;
++static ULong clock_reads = 0;
++static ULong random_state = 0x6172682d696e736eULL; /* "arh-insn" */
++static ULong frame_left = 0;   /* bytes of the current frame not yet read */
++static Bool  frames_ended = False;
++
++void VG_(hill_init) ( void )
++{
++   if (VG_(clo_hill_report_fd) < 0)
++      return;
++   report_fd = VG_(safe_fd)(VG_(clo_hill_report_fd));
++   if (report_fd < 0) {
++      VG_(umsg)("--hill-report-fd=%d: not an open descriptor\n",
++                VG_(clo_hill_report_fd));
++      VG_(exit)(1);
++   }
++}
++
++Bool VG_(hill_reporting) ( void )
++{
++   return report_fd >= 0;
++}
++
++void VG_(hill_report) ( const HChar* line )
++{
++   Int n = VG_(strlen)(line);
++   while (n > 0) {
++      Int w = VG_(write)(report_fd, line, n);
++      if (w <= 0)
++         return;
++      line += w;
++      n -= w;
++   }
++}
++
++void VG_(hill_set_item_hook) ( void (*hook)(void) )
++{
++   item_hook = hook;
++}
++
++/* Whether [a, a + len) is in the client's space. */
++static Bool in_space ( Addr a, SizeT len )
++{
++   return len == 0 || (a < VG_CLIENT_SPACE_END
++                       && len <= VG_CLIENT_SPACE_END - a);
++}
++
++/* Whether this file may write `len` bytes at `a` for the client. */
++static Bool writable ( Addr a, SizeT len )
++{
++   return len == 0 || (in_space(a, len)
++                       && VG_(am_is_valid_for_client)(a, len, VKI_PROT_WRITE));
++}
++
++/* Whether this file may read `len` bytes at `a` of the client's. */
++static Bool readable ( Addr a, SizeT len )
++{
++   return len == 0 || (in_space(a, len)
++                       && VG_(am_is_valid_for_client)(a, len, VKI_PROT_READ));
++}
++
++/* `bytes` written at `a` for the client, or -EFAULT. */
++static Word put ( Addr a, const void* bytes, SizeT len )
++{
++   if (!writable(a, len))
++      return -VKI_EFAULT;
++   VG_(memcpy)((void*)a, bytes, len);
++   return 0;
++}
++
++/* An iovec array of `n` at `a`: readable, and each buffer in the space. */
++static Bool iovecs_in_space ( Addr a, UWord n )
++{
++   if (n > 1024 || !readable(a, n * sizeof(struct vki_iovec)))
++      return False;
++   const struct vki_iovec* v = (const struct vki_iovec*)a;
++   for (UWord i = 0; i < n; i++)
++      if (!in_space((Addr)v[i].iov_base, v[i].iov_len))
++         return False;
++   return True;
++}
++
++/* The next clock reading on clock `id` in nanoseconds, or -EINVAL. */
++static Long now_ns ( UWord id )
++{
++   if (id >= HILL_CLOCK_IDS)
++      return -VKI_EINVAL;
++   clock_reads++;
++   Long ns = (Long)clock_reads * HILL_CLOCK_STEP;
++   /* CLOCK_REALTIME, _REALTIME_COARSE, _REALTIME_ALARM and _TAI */
++   Bool realtime = id == 0 || id == 5 || id == 8 || id == 11;
++   return realtime ? HILL_BASE_S * HILL_NS_PER_S + ns : ns;
++}
++
++/* splitmix64 */
++static ULong next_random ( void )
++{
++   ULong z = (random_state += 0x9e3779b97f4a7c15ULL);
++   z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
++   z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
++   return z ^ (z >> 31);
++}
++
++/* All `len` bytes from the real descriptor 0, waiting for them; False at
++   its end or an error. */
++static Bool read_input ( UChar* buf, Int len )
++{
++   while (len > 0) {
++      Int r = VG_(read)(0, buf, len);
++      if (r == -VKI_EINTR)
++         continue;
++      if (r <= 0)
++         return False;
++      buf += r;
++      len -= r;
++   }
++   return True;
++}
++
++/* read(0, buf, len) of framed input. */
++static Word framed_read ( Addr buf, UWord len )
++{
++   if (len == 0 || frames_ended)
++      return 0;
++   if (frame_left == 0) {
++      UChar header[8];
++      if (!read_input(header, sizeof header)) {
++         frames_ended = True;
++         return 0;
++      }
++      ULong n = 0;
++      for (Int i = 7; i >= 0; i--)
++         n = n << 8 | header[i];
++      if (n == 0) {
++         frames_ended = True;
++         return 0;
++      }
++      frame_left = n;
++      if (item_hook != NULL)
++         item_hook();
++   }
++   static UChar chunk[HILL_FRAME_CHUNK];
++   UWord n = len < sizeof chunk ? len : sizeof chunk;
++   if (frame_left < n)
++      n = frame_left;
++   if (!writable(buf, n))
++      return -VKI_EFAULT;
++   if (!read_input(chunk, (Int)n)) { /* a frame cut short: the input ends */
++      frames_ended = True;
++      return 0;
++   }
++   frame_left -= n;
++   VG_(memcpy)((void*)buf, chunk, n);
++   return (Word)n;
++}
++
++/* Answer the call: its result, or -errno. */
++#define ANSWER(expr)                                           \
++   do { Word r_ = (expr);                                      \
++        if (r_ < 0) SET_STATUS_Failure(-r_);                   \
++        else SET_STATUS_Success(r_);                           \
++        return True; } while (0)
++/* Let the call through to Valgrind's own wrapper and the kernel. */
++#define PASS return False
++
++Bool ML_(hill_syscall) ( ThreadId tid, SyscallArgs* args,
++                         /*OUT*/SyscallStatus* status )
++{
++   if (report_fd < 0)
++      return False;
++   UWord a1 = args->arg1, a2 = args->arg2, a3 = args->arg3, a4 = args->arg4;
++   UWord a5 = args->arg5;
++
++   if (VG_(clo_hill_frames) && a1 == 0) {
++      switch (args->sysno) {
++      case __NR_read:    ANSWER(framed_read(a2, a3));
++      case __NR_pread64:
++      case __NR_readv:   ANSWER(-VKI_EINVAL);
++      case __NR_lseek:   ANSWER(-VKI_ESPIPE);
++      default:           break;
++      }
++   }
++
++   switch (args->sysno) {
++   case __NR_read: case __NR_pread64:
++      if (a1 != 0) ANSWER(-VKI_EBADF);
++      if (!in_space(a2, a3)) ANSWER(-VKI_EFAULT);
++      PASS;
++   case __NR_readv:
++      if (a1 != 0) ANSWER(-VKI_EBADF);
++      if (!iovecs_in_space(a2, a3)) ANSWER(-VKI_EFAULT);
++      PASS;
++   case __NR_lseek:
++      if (a1 != 0) ANSWER(-VKI_EBADF);
++      PASS;
++   case __NR_write:
++      if (a1 != 1 && a1 != 2) ANSWER(-VKI_EBADF);
++      if (!in_space(a2, a3)) ANSWER(-VKI_EFAULT);
++      PASS;
++   case __NR_writev:
++      if (a1 != 1 && a1 != 2) ANSWER(-VKI_EBADF);
++      if (!iovecs_in_space(a2, a3)) ANSWER(-VKI_EFAULT);
++      PASS;
++   case __NR_close:
++      if (a1 > 2) ANSWER(-VKI_EBADF);
++      PASS;
++   case __NR_mmap:
++      /* Huge pages come from the host's pool, which would tell the
++         program how the host is set up: refused, the same everywhere. */
++      if (a4 & HILL_MAP_HUGETLB) ANSWER(-VKI_EINVAL);
++      if (!(a4 & VKI_MAP_ANONYMOUS)
++          && ((Int)a5 != 0 || VG_(clo_hill_frames)))
++         ANSWER(-VKI_EBADF);
++      PASS; /* where: the advisor keeps it in the space (aspacemgr) */
++   case __NR_futex:
++      switch (a2 & 0x7f) { /* without PRIVATE and CLOCK_REALTIME */
++      case 0: case 1: case 9: case 10: /* WAIT, WAKE, their BITSET forms */
++         if (!in_space(a1, 4)) ANSWER(-VKI_EFAULT);
++         if ((a2 & 0x7f) != 1 && (a2 & 0x7f) != 10 && a4 != 0
++             && !in_space(a4, sizeof(struct vki_timespec)))
++            ANSWER(-VKI_EFAULT);
++         PASS;
++      default:
++         ANSWER(-VKI_ENOSYS);
++      }
++   case __NR_set_tid_address:
++      ANSWER(HILL_TID); /* no thread ever exits but the program's own */
++   case __NR_mprotect: case __NR_munmap: case __NR_madvise:
++      /* Valgrind's own wrapper checks mprotect's and munmap's range, but
++         not madvise's, and MADV_DONTNEED would zero Valgrind's memory. */
++      if (!in_space(a1, a2)) ANSWER(-VKI_EFAULT);
++      /* Transparent huge pages: whether the host has them configured
++         decides the answer, so the advice succeeds and does nothing. */
++      if (args->sysno == __NR_madvise
++          && (a3 == HILL_MADV_HUGEPAGE || a3 == HILL_MADV_NOHUGEPAGE
++              || a3 == HILL_MADV_COLLAPSE))
++         ANSWER(0);
++      PASS;
++   case __NR_mremap:
++      if (!in_space(a1, a2)
++          || ((a4 & VKI_MREMAP_FIXED) && !in_space(a5, a3)))
++         ANSWER(-VKI_EFAULT);
++      PASS; /* a moved mapping: the advisor keeps it in the space */
++   case __NR_brk: case __NR_sched_yield: case __NR_rt_sigreturn:
++   case __NR_exit: case __NR_exit_group:
++      PASS;
++   case __NR_rt_sigaction:
++      if (!in_space(a2, sizeof(vki_sigaction_toK_t))
++          || !in_space(a3, sizeof(vki_sigaction_fromK_t)))
++         ANSWER(-VKI_EFAULT);
++      PASS;
++   case __NR_rt_sigprocmask:
++      if (!in_space(a2, a4) || !in_space(a3, a4)) ANSWER(-VKI_EFAULT);
++      PASS;
++   case __NR_sigaltstack:
++      /* Valgrind writes signal frames on the alternate stack itself. */
++      if (!in_space(a2, sizeof(vki_stack_t))) ANSWER(-VKI_EFAULT);
++      if (a1 != 0) {
++         if (!readable(a1, sizeof(vki_stack_t))) ANSWER(-VKI_EFAULT);
++         const vki_stack_t* ss = (const vki_stack_t*)a1;
++         if (!(ss->ss_flags & VKI_SS_DISABLE)
++             && !in_space((Addr)ss->ss_sp, ss->ss_size))
++            ANSWER(-VKI_EFAULT);
++      }
++      PASS;
++   case __NR_arch_prctl:
++      if (a1 == VKI_ARCH_GET_FS && !in_space(a2, sizeof(ULong)))
++         ANSWER(-VKI_EFAULT);
++      PASS;
++   case __NR_clock_gettime: {
++      Long ns = now_ns(a1);
++      if (ns < 0) ANSWER(ns);
++      struct vki_timespec ts = { ns / HILL_NS_PER_S, ns % HILL_NS_PER_S };
++      ANSWER(put(a2, &ts, sizeof ts));
++   }
++   case __NR_gettimeofday: {
++      Long ns = now_ns(0);
++      struct vki_timeval tv = { ns / HILL_NS_PER_S,
++                                ns % HILL_NS_PER_S / 1000 };
++      Int zone[2] = { 0, 0 };
++      if ((a1 != 0 && put(a1, &tv, sizeof tv) < 0)
++          || (a2 != 0 && put(a2, zone, sizeof zone) < 0))
++         ANSWER(-VKI_EFAULT);
++      ANSWER(0);
++   }
++   case __NR_time: {
++      Long s = now_ns(0) / HILL_NS_PER_S;
++      if (a1 != 0 && put(a1, &s, sizeof s) < 0) ANSWER(-VKI_EFAULT);
++      ANSWER(s);
++   }
++   case __NR_clock_getres: {
++      if (a1 >= HILL_CLOCK_IDS) ANSWER(-VKI_EINVAL);
++      struct vki_timespec one = { 0, 1 };
++      ANSWER(a2 != 0 ? put(a2, &one, sizeof one) : 0);
++   }
++   case __NR_nanosleep: case __NR_clock_nanosleep:
++      ANSWER(0);
++   case __NR_getrandom: {
++      UWord len = a2 > 33554431 ? 33554431 : a2; /* Linux's most a call */
++      if (!writable(a1, len)) ANSWER(-VKI_EFAULT);
++      UChar* out = (UChar*)a1;
++      for (UWord done = 0; done < len; done += 8) {
++         ULong r = next_random();
++         VG_(memcpy)(out + done, &r, len - done < 8 ? len - done : 8);
++      }
++      ANSWER(len);
++   }
++   case __NR_poll: case __NR_ppoll: {
++      if (a2 > 1024) ANSWER(-VKI_EINVAL);
++      if (!writable(a1, a2 * sizeof(struct vki_pollfd)))
++         ANSWER(-VKI_EFAULT);
++      struct vki_pollfd* fds = (struct vki_pollfd*)a1;
++      for (UWord i = 0; i < a2; i++)
++         fds[i].revents = 0;
++      ANSWER(0);
++   }
++   case __NR_clone:
++      if (a1 & VKI_CLONE_THREAD) {
++         VG_(hill_report)("thread\n");
++         VG_(exit)(HILL_EXIT_THREAD);
++      }
++      ANSWER(-VKI_ENOSYS);
++   default:
++      ANSWER(-VKI_ENOSYS);
++   }
++}
++
++#undef ANSWER
++#undef PASS
++
++#else /* !VGP_amd64_linux */
++
++void VG_(hill_init) ( void ) {}
++Bool VG_(hill_reporting) ( void ) { return False; }
++void VG_(hill_report) ( const HChar* line ) {}
++void VG_(hill_set_item_hook) ( void (*hook)(void) ) {}
++Bool ML_(hill_syscall) ( ThreadId tid, SyscallArgs* args,
++                         /*OUT*/SyscallStatus* status )
++{
++   return False;
++}
++
++#endif
++
++/*--------------------------------------------------------------------*/
++/*--- end                                                          ---*/
++/*--------------------------------------------------------------------*/
+diff --git a/coregrind/m_syswrap/syswrap-main.c b/coregrind/m_syswrap/syswrap-main.c
+index c7dbd6b92..570e02b7a 100644
+--- a/coregrind/m_syswrap/syswrap-main.c
++++ b/coregrind/m_syswrap/syswrap-main.c
+@@ -52,6 +52,7 @@
+ 
+ #include "priv_types_n_macros.h"
+ #include "priv_syswrap-main.h"
++#include "priv_syswrap-hill.h"
+ 
+ #if defined(VGO_darwin)
+ #include "priv_syswrap-darwin.h"
+@@ -2148,6 +2149,11 @@ typedef
+ 
+ SyscallInfo *syscallInfo;
+ 
++/* Commonhill: whether the current call was answered by the client's system
++   call profile (syswrap-hill.c), which skips its wrappers. The profile
++   refuses a second thread, so there is one current call. */
++static Bool hill_answered = False;
++
+ /* The scheduler needs to be able to zero out these records after a
+    fork, hence this is exported from m_syswrap. */
+ void VG_(clear_syscallInfo) ( ThreadId tid )
+@@ -2406,9 +2412,13 @@ void VG_(client_syscall) ( ThreadId tid, UInt trc )
+ 
+    vg_assert(ent);
+    vg_assert(ent->before);
+-   (ent->before)( tid,
+-                  &layout, 
+-                  &sci->args, &sci->status, &sci->flags );
++   /* Commonhill: the client's system call profile first (syswrap-hill.c);
++      a call it answers has no wrapper, before or after. */
++   hill_answered = ML_(hill_syscall)( tid, &sci->args, &sci->status );
++   if (!hill_answered)
++      (ent->before)( tid,
++                     &layout,
++                     &sci->args, &sci->status, &sci->flags );
+    
+    /* If needed, gdbserver will report syscall entry to GDB */
+    VG_(gdbserver_report_syscall)(True, sysno, tid);
+@@ -2655,7 +2665,7 @@ void VG_(post_syscall) (ThreadId tid)
+       - Success or (Failure and PostOnFail is set)
+    */
+    ent = get_syscall_entry(sysno);
+-   if (ent->after
++   if (ent->after && !hill_answered
+        && ((!sr_isError(sci->status.sres))
+            || (sr_isError(sci->status.sres)
+                && (sci->flags & SfPostOnFail) ))) {
+diff --git a/coregrind/m_translate.c b/coregrind/m_translate.c
+index cfd2b5144..7102591f0 100644
+--- a/coregrind/m_translate.c
++++ b/coregrind/m_translate.c
+@@ -225,6 +225,112 @@ static IRExpr* mk_ecu_Expr ( Addr guest_IP )
+    return mkIRExpr_HWord( (HWord)ecu );
+ }
+ 
++/* Commonhill: the guest's memory guard. All of the client's memory is below
++   VG_CLIENT_SPACE_END and none of Valgrind's is (pub_core_aspacemgr.h), but a
++   guest that can make any pointer could otherwise reach Valgrind's own memory,
++   the tool's counts included. So, before the tool sees a block, every guest
++   load, store, CAS, LL/SC and helper memory access gets a check that it ends
++   below VG_CLIENT_SPACE_END; one that doesn't ends the process with status 135
++   (EXIT_ESCAPE) before it happens, reporting nothing. The check is on the
++   client's IR, before the tool adds its own (which may access the tool's
++   memory), and costs a compare and a branch an access. */
++#if defined(VGP_amd64_linux)
++#define HILL_EXIT_ESCAPE 135
++
++static void hill_escape ( void )
++{
++   VG_(exit)(HILL_EXIT_ESCAPE);
++}
++
++/* Add to `out` the check of an access of `size` bytes at `addr` (an atom),
++   made only when `guard` (an atom of type Ity_I1, or NULL for always). */
++static void hill_add_check ( IRSB* out, IRExpr* addr, Int size,
++                             IRExpr* guard )
++{
++   vg_assert(size > 0 && (Addr)size < VG_CLIENT_SPACE_END);
++   vg_assert(typeOfIRExpr(out->tyenv, addr) == Ity_I64);
++   IRTemp past = newIRTemp(out->tyenv, Ity_I1);
++   addStmtToIRSB(out, IRStmt_WrTmp(past,
++      IRExpr_Binop(Iop_CmpLT64U,
++                   IRExpr_Const(IRConst_U64(VG_CLIENT_SPACE_END - size)),
++                   addr)));
++   IRExpr* bad = IRExpr_RdTmp(past);
++   if (guard != NULL) {
++      IRTemp both = newIRTemp(out->tyenv, Ity_I1);
++      addStmtToIRSB(out, IRStmt_WrTmp(both,
++                                      IRExpr_Binop(Iop_And1, guard, bad)));
++      bad = IRExpr_RdTmp(both);
++   }
++   IRDirty* d = unsafeIRDirty_0_N(0, "hill_escape",
++                                  VG_(fnptr_to_fnentry)(&hill_escape),
++                                  mkIRExprVec_0());
++   d->guard = bad;
++   addStmtToIRSB(out, IRStmt_Dirty(d));
++}
++
++static IRSB* hill_guard_client_accesses ( IRSB* sb_in )
++{
++   IRTypeEnv* tyenv = sb_in->tyenv;
++   IRSB* out = deepCopyIRSBExceptStmts(sb_in);
++   for (Int i = 0; i < sb_in->stmts_used; i++) {
++      IRStmt* st = sb_in->stmts[i];
++      switch (st->tag) {
++         case Ist_WrTmp:
++            if (st->Ist.WrTmp.data->tag == Iex_Load) {
++               IRExpr* ld = st->Ist.WrTmp.data;
++               hill_add_check(out, ld->Iex.Load.addr,
++                              sizeofIRType(ld->Iex.Load.ty), NULL);
++            }
++            break;
++         case Ist_Store:
++            hill_add_check(out, st->Ist.Store.addr,
++                           sizeofIRType(typeOfIRExpr(tyenv,
++                                                     st->Ist.Store.data)),
++                           NULL);
++            break;
++         case Ist_StoreG: {
++            IRStoreG* sg = st->Ist.StoreG.details;
++            hill_add_check(out, sg->addr,
++                           sizeofIRType(typeOfIRExpr(tyenv, sg->data)),
++                           sg->guard);
++            break;
++         }
++         case Ist_LoadG: {
++            IRLoadG* lg = st->Ist.LoadG.details;
++            IRType wide = Ity_INVALID, type = Ity_INVALID;
++            typeOfIRLoadGOp(lg->cvt, &wide, &type);
++            hill_add_check(out, lg->addr, sizeofIRType(type), lg->guard);
++            break;
++         }
++         case Ist_CAS: {
++            IRCAS* cas = st->Ist.CAS.details;
++            Int size = sizeofIRType(typeOfIRExpr(tyenv, cas->dataLo));
++            hill_add_check(out, cas->addr,
++                           cas->dataHi != NULL ? 2 * size : size, NULL);
++            break;
++         }
++         case Ist_LLSC: {
++            IRType ty = st->Ist.LLSC.storedata == NULL
++                           ? typeOfIRTemp(tyenv, st->Ist.LLSC.result)
++                           : typeOfIRExpr(tyenv, st->Ist.LLSC.storedata);
++            hill_add_check(out, st->Ist.LLSC.addr, sizeofIRType(ty), NULL);
++            break;
++         }
++         case Ist_Dirty: {
++            IRDirty* d = st->Ist.Dirty.details;
++            if (d->mFx != Ifx_None)
++               hill_add_check(out, d->mAddr, d->mSize, d->guard);
++            break;
++         }
++         default:
++            break;
++      }
++      addStmtToIRSB(out, st);
++   }
++   return out;
++}
++#endif
++
+ /* When gdbserver is activated, the translation of a block must
+    first be done by the tool function, then followed by a pass
+    which (if needed) instruments the code for gdbserver.
+@@ -252,6 +358,25 @@ IRSB* tool_instrument_then_gdbserver_if_needed ( VgCallbackClosure* closureV,
+        hWordTy);                                   
+ }
+ 
++#if defined(VGP_amd64_linux)
++/* Commonhill: the guard (hill_guard_client_accesses), then the tool. */
++static
++IRSB* guard_then_tool_instrument ( VgCallbackClosure* closureV,
++                                   IRSB*              sb_in,
++                                   const VexGuestLayout*  layout,
++                                   const VexGuestExtents* vge,
++                                   const VexArchInfo*     vai,
++                                   IRType             gWordTy,
++                                   IRType             hWordTy )
++{
++   IRSB* guarded = hill_guard_client_accesses(sb_in);
++   return (VG_(clo_vgdb) != Vg_VgdbNo
++              ? tool_instrument_then_gdbserver_if_needed
++              : VG_(tdict).tool_instrument)
++          (closureV, guarded, layout, vge, vai, gWordTy, hWordTy);
++}
++#endif
++
+ /* For tools that want to know about SP changes, this pass adds
+    in the appropriate hooks.  We have to do it after the tool's
+    instrumentation, so the tool doesn't have to worry about the C calls
+@@ -1793,9 +1918,13 @@ Bool VG_(translate) ( ThreadId tid,
+      IRSB*(*f)(VgCallbackClosure*,
+                IRSB*,const VexGuestLayout*,const VexGuestExtents*,
+                const VexArchInfo*,IRType,IRType)
++#       if defined(VGP_amd64_linux)
++        = guard_then_tool_instrument;
++#       else
+         = VG_(clo_vgdb) != Vg_VgdbNo
+              ? tool_instrument_then_gdbserver_if_needed
+              : VG_(tdict).tool_instrument;
++#       endif
+      IRSB*(*g)(void*,
+                IRSB*,const VexGuestLayout*,const VexGuestExtents*,
+                const VexArchInfo*,IRType,IRType) = (__typeof__(g)) f;
+diff --git a/coregrind/pub_core_aspacemgr.h b/coregrind/pub_core_aspacemgr.h
+index 070fa5495..5031202b6 100644
+--- a/coregrind/pub_core_aspacemgr.h
++++ b/coregrind/pub_core_aspacemgr.h
+@@ -46,6 +46,15 @@
+    the tool-visible header file, not here. */
+ 
+ 
++/* Commonhill (amd64-linux): all of the client's memory is below this address
++   and none of Valgrind's is. The client's stack ends at it, every client
++   mapping the advisor grants ends below it, and Valgrind's own image
++   (configure.ac: loaded here) and mappings (from aspacem_vStart) are above
++   it. So a guest access below it can't reach Valgrind's memory, which
++   m_translate.c's guard and m_syswrap/syswrap-hill.c's checks rely on:
++   1.75 GiB, the client's space. */
++#define VG_CLIENT_SPACE_END ((Addr)0x70000000ULL)
++
+ //--------------------------------------------------------------
+ // Initialisation
+ 
+diff --git a/coregrind/pub_core_hill.h b/coregrind/pub_core_hill.h
+new file mode 100644
+index 000000000..551107219
+--- /dev/null
++++ b/coregrind/pub_core_hill.h
+@@ -0,0 +1,40 @@
++/*--------------------------------------------------------------------*/
++/*--- Commonhill: the run's report and the client's system call    ---*/
++/*--- profile.                                     pub_core_hill.h ---*/
++/*--------------------------------------------------------------------*/
++
++/*
++   Commonhill's patch to Valgrind (GPL-3.0-or-later, like Valgrind).
++
++   This program is free software; you can redistribute it and/or
++   modify it under the terms of the GNU General Public License as
++   published by the Free Software Foundation; either version 3 of the
++   License, or (at your option) any later version.
++
++   The GNU General Public License is contained in the file COPYING.
++*/
++
++#ifndef __PUB_CORE_HILL_H
++#define __PUB_CORE_HILL_H
++
++#include "pub_tool_hill.h"
++
++/* After the command line and the file descriptors' setup: moves the
++   report's descriptor (--hill-report-fd) out of the client's range. */
++extern void VG_(hill_init) ( void );
++
++/* The program's start under the hill report, the same on every host
++   (m_initimg/initimg-linux.c): its argv[0] and AT_EXECFN, the ids in its
++   auxiliary vector, and the sizes of its stack and of its brk segment,
++   which otherwise come from the host's RLIMIT_STACK and RLIMIT_DATA and
++   move every later mapping. */
++#define HILL_EXENAME   "program"
++#define HILL_ID        1000
++#define HILL_STACK_SZB (8 * 1024 * 1024)
++#define HILL_DATA_SZB  (8 * 1024 * 1024)
++
++#endif   // __PUB_CORE_HILL_H
++
++/*--------------------------------------------------------------------*/
++/*--- end                                                          ---*/
++/*--------------------------------------------------------------------*/
+diff --git a/coregrind/pub_core_machine.h b/coregrind/pub_core_machine.h
+index b9f2d0102..b44f5b4e7 100644
+--- a/coregrind/pub_core_machine.h
++++ b/coregrind/pub_core_machine.h
+@@ -254,6 +254,12 @@ void VG_(get_UnwindStartRegs) ( /*OUT*/UnwindStartRegs* regs,
+    this a CPU incapable of running Valgrind. */
+ extern Bool VG_(machine_get_hwcaps)( void );
+ 
++#if defined(VGA_amd64)
++/* Commonhill: under the hill report, replace the host's hwcaps with a
++   fixed set (exits when the host lacks one of them). */
++extern void VG_(machine_hill_pin_hwcaps)( void );
++#endif
++
+ /* Determine information about the cache system this host has and
+    record it. Returns False, if cache information cannot be auto-detected. */
+ extern Bool VG_(machine_get_cache_info)( VexArchInfo * );
+diff --git a/coregrind/pub_core_options.h b/coregrind/pub_core_options.h
+index b145dc8ba..38013cf68 100644
+--- a/coregrind/pub_core_options.h
++++ b/coregrind/pub_core_options.h
+@@ -129,6 +129,11 @@ extern const HChar* VG_(clo_trace_children_skip_by_arg);
+    without those capabilities, since Valgrind loads them itself. */
+ extern const HChar* VG_(clo_allow_file_caps);
+ extern Bool VG_(clo_deterministic_rng);
++/* Commonhill (m_syswrap/syswrap-hill.c): the descriptor of the report, -1
++   for none; one turns on the client's system call profile. And whether the
++   client's input (descriptor 0) is framed. */
++extern Int  VG_(clo_hill_report_fd);
++extern Bool VG_(clo_hill_frames);
+ /* After a fork, the child's output can become confusingly
+    intermingled with the parent's output.  This is especially
+    problematic when VG_(clo_xml) is True.  Setting
+diff --git a/include/Makefile.am b/include/Makefile.am
+index 3995d6de5..cb50c8a47 100644
+--- a/include/Makefile.am
++++ b/include/Makefile.am
+@@ -15,6 +15,7 @@ nobase_pkginclude_HEADERS = \
+ 	pub_tool_execontext.h 		\
+ 	pub_tool_gdbserver.h 		\
+ 	pub_tool_guest.h 		\
++	pub_tool_hill.h 		\
+ 	pub_tool_poolalloc.h 		\
+ 	pub_tool_hashtable.h 		\
+ 	pub_tool_libcbase.h 		\
+diff --git a/include/pub_tool_hill.h b/include/pub_tool_hill.h
+new file mode 100644
+index 000000000..e3cfcb272
+--- /dev/null
++++ b/include/pub_tool_hill.h
+@@ -0,0 +1,36 @@
++/*--------------------------------------------------------------------*/
++/*--- Commonhill: the run's report, for tools.     pub_tool_hill.h ---*/
++/*--------------------------------------------------------------------*/
++
++/*
++   Commonhill's patch to Valgrind (GPL-3.0-or-later, like Valgrind).
++
++   This program is free software; you can redistribute it and/or
++   modify it under the terms of the GNU General Public License as
++   published by the Free Software Foundation; either version 3 of the
++   License, or (at your option) any later version.
++
++   The GNU General Public License is contained in the file COPYING.
++*/
++
++#ifndef __PUB_TOOL_HILL_H
++#define __PUB_TOOL_HILL_H
++
++#include "pub_tool_basics.h"   // Bool, HChar
++
++/* Whether the run reports (--hill-report-fd): then the tool writes its
++   results with VG_(hill_report) and no file. */
++extern Bool VG_(hill_reporting) ( void );
++
++/* Write `line` (with its newline) to the report. */
++extern void VG_(hill_report) ( const HChar* line );
++
++/* With --hill-frames=yes, `hook` is called at the first read of each input
++   frame, to report the tool's counts then ("item ..."). */
++extern void VG_(hill_set_item_hook) ( void (*hook)(void) );
++
++#endif   // __PUB_TOOL_HILL_H
++
++/*--------------------------------------------------------------------*/
++/*--- end                                                          ---*/
++/*--------------------------------------------------------------------*/
+diff --git a/massif/ms_main.c b/massif/ms_main.c
+index 94eca658e..7fb69dd14 100644
+--- a/massif/ms_main.c
++++ b/massif/ms_main.c
+@@ -171,6 +171,7 @@ Number of snapshots: 50
+ #include "pub_tool_xtmemory.h"
+ #include "pub_tool_clientstate.h"
+ #include "pub_tool_gdbserver.h"
++#include "pub_tool_hill.h"            // Commonhill's report
+ 
+ #include "pub_tool_clreq.h"           // For {MALLOC,FREE}LIKE_BLOCK
+ 
+@@ -1174,6 +1175,9 @@ static void update_alloc_stats(SSizeT szB_delta)
+    total_allocs_deallocs_szB += szB_delta;
+ }
+ 
++/* Commonhill: the largest heap_szB + heap_extra_szB, at any time. */
++static SizeT peak_heap_total_szB = 0;
++
+ static void update_heap_stats(SSizeT heap_szB_delta, Int heap_extra_szB_delta)
+ {
+    if (heap_szB_delta < 0)
+@@ -1184,6 +1188,10 @@ static void update_heap_stats(SSizeT heap_szB_delta, Int heap_extra_szB_delta)
+    heap_extra_szB += heap_extra_szB_delta;
+    heap_szB       += heap_szB_delta;
+ 
++   // Commonhill: the exact peak, for the report (snapshots may miss it).
++   if (heap_szB + heap_extra_szB > peak_heap_total_szB)
++      peak_heap_total_szB = heap_szB + heap_extra_szB;
++
+    update_alloc_stats(heap_szB_delta + heap_extra_szB_delta);
+ }
+ 
+@@ -2040,6 +2048,14 @@ static void ms_print_stats (void)
+ 
+ static void ms_fini(Int exit_status)
+ {
++   // Commonhill: a reporting run writes its peak, and no file.
++   if (VG_(hill_reporting)()) {
++      HChar line[64];
++      VG_(sprintf)(line, "peak %lu\n", peak_heap_total_szB);
++      VG_(hill_report)(line);
++      return;
++   }
++
+    ms_xtmemory_report(VG_(clo_xtree_memory_file), True);
+ 
+    // Output.
+@@ -2086,34 +2102,42 @@ static void ms_post_clo_init(void)
+ 
+       clo_heap_admin = 0;     // No heap admin on pages.
+ 
++      // Commonhill: under the hill report the client's environment is
++      // empty (initimg-linux.c), so there is no LD_PRELOAD to clean; and
++      // with one, there may be no vgpreload_massif entry, when its library
++      // isn't installed (the kit's programs are static and load no
++      // library, so it ships only the tool).
+       LD_PRELOAD_val = VG_(getenv)( VG_(LD_PRELOAD_var_name) );
+-      tl_assert(LD_PRELOAD_val);
++      tl_assert(LD_PRELOAD_val || VG_(hill_reporting)());
+ 
+-      VERB(2, "clo_pages_as_heap orig LD_PRELOAD '%s'\n", LD_PRELOAD_val);
++      if (LD_PRELOAD_val != NULL) {
++         VERB(2, "clo_pages_as_heap orig LD_PRELOAD '%s'\n", LD_PRELOAD_val);
+ 
+-      // Make sure the vgpreload_core-$PLATFORM entry is there, for sanity.
+-      s1 = VG_(strstr)(LD_PRELOAD_val, "vgpreload_core");
+-      tl_assert(s1);
++         // Make sure the vgpreload_core-$PLATFORM entry is there, for sanity.
++         s1 = VG_(strstr)(LD_PRELOAD_val, "vgpreload_core");
++         tl_assert(s1);
+ 
+-      // Now find the vgpreload_massif-$PLATFORM entry.
+-      s1 = VG_(strstr)(LD_PRELOAD_val, "vgpreload_massif");
+-      tl_assert(s1);
+-      s2 = s1;
++         // Now find the vgpreload_massif-$PLATFORM entry.
++         s1 = VG_(strstr)(LD_PRELOAD_val, "vgpreload_massif");
++         if (s1 != NULL) {
++            s2 = s1;
+ 
+-      // Position s1 on the previous ':', which must be there because
+-      // of the preceding vgpreload_core-$PLATFORM entry.
+-      for (; *s1 != ':'; s1--)
+-         ;
++            // Position s1 on the previous ':', which must be there because
++            // of the preceding vgpreload_core-$PLATFORM entry.
++            for (; *s1 != ':'; s1--)
++               ;
+ 
+-      // Position s2 on the next ':' or \0
+-      for (; *s2 != ':' && *s2 != '\0'; s2++)
+-         ;
++            // Position s2 on the next ':' or \0
++            for (; *s2 != ':' && *s2 != '\0'; s2++)
++               ;
+ 
+-      // Move all characters from s2 to s1
+-      while ((*s1++ = *s2++))
+-         ;
++            // Move all characters from s2 to s1
++            while ((*s1++ = *s2++))
++               ;
++         }
+ 
+-      VERB(2, "clo_pages_as_heap cleaned LD_PRELOAD '%s'\n", LD_PRELOAD_val);
++         VERB(2, "clo_pages_as_heap cleaned LD_PRELOAD '%s'\n", LD_PRELOAD_val);
++      }
+    }
+ 
+    // Print alloc-fns and ignore-fns, if necessary.

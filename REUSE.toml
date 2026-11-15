@@ -1,11 +1,33 @@
 # SPDX-FileCopyrightText: 2026 Blazelight Pty Ltd
 # SPDX-License-Identifier: Apache-2.0
 #
-# Licences of the files that can't carry an SPDX header (data, fixtures, generated and third-party
-# files). Every other file states its own in its header. `reuse lint` checks both.
+# The licence of every file. A file a project vendors can't carry a header, since its bytes are
+# the release's (grader/src, kits/*/project), so the licences are annotated here by path: all of
+# the repository Apache-2.0, and after that the kits' GPL files (a later annotation wins over an
+# earlier one for the files both match). A file with its own SPDX header keeps it. `reuse lint`
+# checks it all.
 version = 1
 
 [[annotations]]
-path = ["NOTICE", "SECURITY.md"]
+path = ["**"]
 SPDX-FileCopyrightText = "2026 Blazelight Pty Ltd"
 SPDX-License-Identifier = "Apache-2.0"
+
+# The kits' sandboxes drive QEMU's plugin and CodSpeed's Valgrind, and insncap.c is a QEMU TCG
+# plugin: GPL-2.0-or-later, as a QEMU plugin needs (PER-478 Q5, Round 13).
+[[annotations]]
+path = ["kits/insncap/project/grader/sandbox.py", "kits/insncap/project/grader/native/insncap.c", "kits/cycles/project/grader/sandbox.py"]
+SPDX-FileCopyrightText = "2026 Blazelight Pty Ltd"
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+# A patch to QEMU (GPL-2.0-only).
+[[annotations]]
+path = ["kits/insncap/project/grader/native/qemu.patch"]
+SPDX-FileCopyrightText = "2026 Blazelight Pty Ltd"
+SPDX-License-Identifier = "GPL-2.0-only"
+
+# A patch to CodSpeed's Valgrind fork (GPL-3.0-or-later).
+[[annotations]]
+path = ["kits/cycles/project/grader/native/valgrind.patch"]
+SPDX-FileCopyrightText = "2026 Blazelight Pty Ltd"
+SPDX-License-Identifier = "GPL-3.0-or-later"
