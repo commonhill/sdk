@@ -190,21 +190,48 @@ def test_a_body_of_many_small_values_is_refused_before_it_is_decoded(
 
     assert (batch.error, batch.kind) == ("over 3000002 JSON values", "too_large")
     assert batch.outputs == [None] * 3
-    # The body read, and its copy without strings: a few times its size, not decoding's 25.
+    # The body as read (fetch buffers it): a few times its size, not decoding's 25.
     assert peak < 4 * len(body), f"peak {peak} bytes for a {len(body)}-byte body"
 
 
 def test_values_are_counted_as_decoding_makes_them() -> None:
-    """At least the values decoding makes; strings' contents, escaped quotes included, aren't."""
+    """At least the values decoding makes; strings' contents, escaped quotes and runs of
+    backslashes included, aren't."""
     for body, decoded in [
         (b"1", 1),
         (b'{"outputs": ["a", "b", "c"]}', 5),
         (b'{"outputs": [[1, 2], {"k": [3]}]}', 8),
         (json.dumps({"outputs": ["[,{:\\", '\\"[[[[', ",,,"]}).encode(), 5),
+        (json.dumps(["\\" * 7 + '"', "\\" * 8, ",:", '"' * 5 + "[{"]).encode(), 5),
         ('["\\u00e9 é {,", 2]'.encode(), 3),
     ]:
-        assert json_values(body) >= decoded, body
-        assert json_values(body) <= decoded + 3, body
+        assert json.loads(body) is not None
+        counted = json_values(body, 1000)
+        assert counted is not None, body
+        assert decoded <= counted <= decoded + 3, body
+    assert json_values(b'{"outputs": [' + b"[]," * 1000 + b"1]}", 10) == 11, "stops past the cap"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [b'"' + b'\\"' * 10, b'["a", "b' + b"\\\\" * 10 + b'\\"]', b'["a"] "', b'"\\'],
+    ids=["escaped quotes", "escaped backslashes then an escaped quote", "a lone quote", "a backslash"],
+)
+def test_a_string_that_never_ends_isnt_json(body: bytes) -> None:
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(body)
+    assert json_values(body, 1000) is None
+
+
+def test_a_megabyte_of_escaped_quotes_is_refused_at_once(scripted_http: Start, worker_scripts: Any) -> None:
+    """Sol's re-check: a body of escaped quotes in a string that never ends took a backtracking
+    pattern quadratic time (1.6 s for 16 KB). One pass: 1 MB in well under a second."""
+    body = b'"' + b'\\"' * 512 * 1024 + b"x"
+    server = scripted_http(answer_with(worker_scripts, body))
+    started = time.monotonic()
+    batch = Client(server.url, timeout_s=60).run(["a", "b", "c"])
+    assert (batch.error, batch.kind) == ("not JSON (a string never ends)", "not_json")
+    assert time.monotonic() - started < 0.5
 
 
 def test_a_batch_may_hold_up_to_its_items_values(scripted_http: Start, worker_scripts: Any) -> None:

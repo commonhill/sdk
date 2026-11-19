@@ -20,8 +20,9 @@ sends is ever logged; `Batch.error` names only the kind of failure.
 
 Each failed item has a failure kind (since the SDK's release 4; `commonhill_grader.result`'s
 `failure_kinds`): its whole batch's (`Batch.kind`: "timeout", "too_large" (bytes or values),
-"connection", "http_<status>", "not_json", "bad_shape" for a body that isn't `{"outputs": [...]}`, "wrong_count"
-for a check that raised). `Evaluation.failure_kinds()` counts them, summing to its failures.
+"connection", "http_<status>", "not_json", "bad_shape" for a body that isn't `{"outputs": [...]}`,
+"wrong_count" for a check that raised). `Evaluation.failure_kinds()` counts them, summing to its
+failures.
 
 With an oracle (since release 5, `commonhill_grader.oracle`), `run` and `evaluate` take the items'
 sessions, one per item: a batch's sessions are closed as soon as its response is read, or its
@@ -31,7 +32,6 @@ over its cap fails as "oracle_cap", whatever its output (a whole batch's failure
 
 import json
 import math
-import re
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -52,8 +52,8 @@ MAX_RESPONSE_BYTES = 64 * 1024 * 1024
 # many per item, and this many in all. Decoding takes up to ~90 bytes of memory per value.
 MAX_VALUES_PER_OUTPUT = 1_000_000
 MAX_VALUES = 4_000_000
-# A JSON string, as JSON lexes it (in UTF-8, no multibyte sequence holds an ASCII byte).
-_STRING = re.compile(rb'"[^"\\]*(?:\\.[^"\\]*)*"', re.DOTALL)
+_QUOTE, _BACKSLASH = ord('"'), ord("\\")
+_MARKS = frozenset(b"[{,:")
 
 
 @dataclass(frozen=True)
@@ -145,7 +145,10 @@ class Client:
         cap = min(self.max_values, 2 + MAX_VALUES_PER_OUTPUT * len(items))
         if json.detect_encoding(response.body) not in ("utf-8", "utf-8-sig"):
             return Batch([None] * len(items), seconds, "not JSON (not UTF-8)", kind="not_json")
-        if json_values(response.body) > cap:
+        counted = json_values(response.body, cap)
+        if counted is None:
+            return Batch([None] * len(items), seconds, "not JSON (a string never ends)", kind="not_json")
+        if counted > cap:
             return Batch([None] * len(items), seconds, f"over {cap} JSON values", kind="too_large")
         try:
             decoded = loads(response.body)
@@ -230,11 +233,28 @@ def _no_constant(name: str) -> object:
     raise ValueError("NaN and Infinity aren't JSON")
 
 
-def json_values(body: bytes) -> int:
+def json_values(body: bytes, stop: int) -> int | None:
     """How many values UTF-8 JSON `body` holds, at least as many as decoding it makes up to where
-    it fails, if it does: one, and one more for each `[`, `{`, `,` and `:` outside strings."""
-    bare = _STRING.sub(b"", body)
-    return 1 + sum(bare.count(mark) for mark in (b"[", b"{", b",", b":"))
+    it fails, if it does: one, and one more for each `[`, `{`, `,` and `:` outside strings (in
+    UTF-8, no multibyte sequence holds an ASCII byte). One pass over the bytes, ended as soon as
+    the count passes `stop`; None if a string never ends."""
+    count = 1
+    inside = escaped = False
+    for byte in body:
+        if inside:
+            if escaped:
+                escaped = False
+            elif byte == _BACKSLASH:
+                escaped = True
+            elif byte == _QUOTE:
+                inside = False
+        elif byte == _QUOTE:
+            inside = True
+        elif byte in _MARKS:
+            count += 1
+            if count > stop:
+                return count
+    return None if inside else count
 
 
 def loads(data: bytes | str) -> object:
