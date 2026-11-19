@@ -15,8 +15,8 @@ from typing import Any, cast
 
 import pytest
 
-import arh_grader.ready as ready_module
-from arh_grader import (
+import commonhill_grader.ready as ready_module
+from commonhill_grader import (
     ITEMS_FILE,
     PUBLIC_SEED,
     STARTUP_ENV,
@@ -37,8 +37,8 @@ from arh_grader import (
     worker_started,
     write_result,
 )
-from arh_grader.ready import DEFAULT_STARTUP_TIMEOUT_S
-from arh_grader.result import MAX_COUNT, MAX_ITEMS_BYTES
+from commonhill_grader.ready import DEFAULT_STARTUP_TIMEOUT_S
+from commonhill_grader.result import MAX_COUNT, MAX_ITEMS_BYTES
 
 
 class Health(BaseHTTPRequestHandler):
@@ -77,7 +77,7 @@ def test_wait_ready_returns_once_healthz_answers_200() -> None:
 
 def test_wait_ready_gives_up_at_its_deadline_with_the_last_answer(capsys: pytest.CaptureFixture[str]) -> None:
     """Release 3: how long it waited (its own clock, at least the limit) is in the exception and on
-    one stderr line, which `arh run` reads (PER-336)."""
+    one stderr line, which `commonhill run` reads (PER-336)."""
     for url in serve(ready_at=float("inf")):
         started = time.monotonic()
         with pytest.raises(
@@ -89,7 +89,7 @@ def test_wait_ready_gives_up_at_its_deadline_with_the_last_answer(capsys: pytest
         assert refused.value.limit_s == 1.0
         assert 1.0 <= refused.value.waited_s <= took
         assert capsys.readouterr().err == (
-            f"arh_grader: worker not ready after {refused.value.waited_s:.3f} s (limit 1 s)\n"
+            f"commonhill_grader: worker not ready after {refused.value.waited_s:.3f} s (limit 1 s)\n"
         )
 
 

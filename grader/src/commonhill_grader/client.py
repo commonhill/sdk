@@ -10,18 +10,18 @@ does. Everything that can go wrong is counted as item failures instead:
   for a float, like `1e999`, are refused anywhere in it; so is nesting too deep to decode), or it
   isn't `{"outputs": [...]}` with exactly one output per item;
 - a single item fails when its output is `null` or doesn't match the output schema
-  (`arh_grader.schema`), and also if checking it raises for any reason.
+  (`commonhill_grader.schema`), and also if checking it raises for any reason.
 
 `Client.evaluate(items, batch_size, warmup)` runs a whole evaluation: warmup batches first (their
 results and times are thrown away), then every item once, timed per batch. Nothing the worker
 sends is ever logged; `Batch.error` names only the kind of failure.
 
-Each failed item has a failure kind (since the SDK's release 4; `arh_grader.result`'s
+Each failed item has a failure kind (since the SDK's release 4; `commonhill_grader.result`'s
 `failure_kinds`): its whole batch's (`Batch.kind`: "timeout", "too_large", "connection",
 "http_<status>", "not_json", "bad_shape" for a body that isn't `{"outputs": [...]}`, "wrong_count"
 for a check that raised). `Evaluation.failure_kinds()` counts them, summing to its failures.
 
-With an oracle (since release 5, `arh_grader.oracle`), `run` and `evaluate` take the items'
+With an oracle (since release 5, `commonhill_grader.oracle`), `run` and `evaluate` take the items'
 sessions, one per item: a batch's sessions are closed as soon as its response is read, or its
 request failed, so their counts are final before anything is checked; an item whose session went
 over its cap fails as "oracle_cap", whatever its output (a whole batch's failure keeps its kind).
@@ -34,17 +34,17 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
 
-from arh_grader.fetch import FetchError, fetch
-from arh_grader.schema import Checker
-from arh_grader.startup import begin_timed
-from arh_grader.timing import Timings, clock
+from commonhill_grader.fetch import FetchError, fetch
+from commonhill_grader.schema import Checker
+from commonhill_grader.startup import begin_timed
+from commonhill_grader.timing import Timings, clock
 
 if TYPE_CHECKING:
-    from arh_grader.oracle import Session
+    from commonhill_grader.oracle import Session
 
 # CONTRACT.md's defaults.
 REQUEST_TIMEOUT_S = 10.0
-MAX_RESPONSE_BYTES = 1024 * 1024
+MAX_RESPONSE_BYTES = 64 * 1024 * 1024
 
 
 @dataclass(frozen=True)

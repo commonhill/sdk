@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from arh_grader import (
+from commonhill_grader import (
     ORACLE_PORT,
     RESULT_PATH,
     Client,

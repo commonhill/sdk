@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from arh_grader import (
+from commonhill_grader import (
     MAX_VIEW_BYTES,
     VIEW_ENV,
     check_view,

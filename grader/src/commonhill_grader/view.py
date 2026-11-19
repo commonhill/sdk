@@ -52,7 +52,7 @@ from pathlib import Path
 from typing import Any, cast
 from xml.parsers import expat
 
-from arh_grader.result import (
+from commonhill_grader.result import (
     RESULT_PATH,
     _write_atomically,  # pyright: ignore[reportPrivateUsage]
 )

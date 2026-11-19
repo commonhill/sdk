@@ -37,7 +37,7 @@ def test_the_sdk_knows_its_current_release_and_its_kits() -> None:
     ("drift", "said"),
     [
         ("grader/native/insncap.c", "no grader/native/insncap.c (the insncap kit's)"),
-        ("grader/arh_grader", f"no grader/arh_grader (release {CURRENT} expected)"),
+        ("grader/commonhill_grader", f"no grader/commonhill_grader (release {CURRENT} expected)"),
     ],
 )
 def test_a_deleted_copy_or_kit_marker_fails_the_check(tmp_path: Path, drift: str, said: str) -> None:
@@ -67,12 +67,14 @@ def project(tmp_path: Path, kit: str | None = None) -> Path:
 def test_copy_writes_what_check_accepts(tmp_path: Path, kit: str | None) -> None:
     root = project(tmp_path)
     kits = () if kit is None else (kit,)
-    assert vendor.problems(root, CURRENT, kits)[0] == f"no grader/arh_grader (release {CURRENT} expected)"
+    assert (
+        vendor.problems(root, CURRENT, kits)[0] == f"no grader/commonhill_grader (release {CURRENT} expected)"
+    )
 
     assert vendor.main(["copy", *(f"--kit={k}" for k in kits), str(root)]) == 0
 
     assert vendor.main(["check", f"--release={CURRENT}", *(f"--kit={k}" for k in kits), str(root)]) == 0
-    assert vendor.files(root / "grader" / "arh_grader") == vendor.files(vendor.SDK)
+    assert vendor.files(root / "grader" / "commonhill_grader") == vendor.files(vendor.SDK)
 
 
 def test_copy_finds_the_kits_by_their_markers_too(tmp_path: Path) -> None:
@@ -83,7 +85,7 @@ def test_copy_finds_the_kits_by_their_markers_too(tmp_path: Path) -> None:
 
 def test_copy_of_the_kits_alone_leaves_the_sdk_the_project_pins(tmp_path: Path) -> None:
     root = project(tmp_path, "cycles")
-    pinned = root / "grader" / "arh_grader"
+    pinned = root / "grader" / "arh_grader"  # release 4: before the rename
     pinned.mkdir()
     (pinned / "__init__.py").write_text("RELEASE = 4\n")
 
@@ -97,7 +99,7 @@ def test_copy_of_the_kits_alone_leaves_the_sdk_the_project_pins(tmp_path: Path) 
 def test_check_names_each_difference(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     root = project(tmp_path, "insncap")
     vendor.copy(root)
-    sdk = root / "grader" / "arh_grader"
+    sdk = root / "grader" / "commonhill_grader"
     (sdk / "client.py").write_text((sdk / "client.py").read_text() + "# mine\n")
     (sdk / "extra.py").write_text("")
     (root / "grader" / "native" / "qemu.patch").write_text("another patch\n")
@@ -106,8 +108,8 @@ def test_check_names_each_difference(tmp_path: Path, capsys: pytest.CaptureFixtu
     assert vendor.main(["check", f"--release={CURRENT}", "--kit=insncap", str(root)]) == 1
 
     assert capsys.readouterr().err.splitlines() == [
-        f"{root}: grader/arh_grader/client.py isn't release {CURRENT}'s",
-        f"{root}: grader/arh_grader/extra.py isn't release {CURRENT}'s",
+        f"{root}: grader/commonhill_grader/client.py isn't release {CURRENT}'s",
+        f"{root}: grader/commonhill_grader/extra.py isn't release {CURRENT}'s",
         f"{root}: grader/native/valgrind.patch says it uses the cycles kit, which it shouldn't",
         f"{root}: grader/native/qemu.patch isn't the insncap kit's",
     ]
@@ -116,7 +118,9 @@ def test_check_names_each_difference(tmp_path: Path, capsys: pytest.CaptureFixtu
 def test_a_copy_of_another_release_than_the_one_expected_fails(tmp_path: Path) -> None:
     root = project(tmp_path)
     vendor.copy(root)
-    assert vendor.problems(root, 4, ()) == [f"grader/arh_grader says release {CURRENT}, not 4"]
+    assert vendor.problems(root, 4, ()) == ["no grader/arh_grader (release 4 expected)"]
+    (root / "grader" / "commonhill_grader" / "__init__.py").write_text("RELEASE = 11\n")
+    assert vendor.problems(root, CURRENT, ())[0] == f"grader/commonhill_grader says release 11, not {CURRENT}"
 
 
 def test_an_earlier_release_is_checked_by_its_digest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -146,8 +150,8 @@ def test_a_release_the_sdk_doesnt_know_or_none_at_all_is_refused(tmp_path: Path)
 def test_a_symlink_in_a_copy_is_refused(tmp_path: Path) -> None:
     root = project(tmp_path)
     vendor.copy(root)
-    (root / "grader" / "arh_grader" / "elsewhere").symlink_to(tmp_path)
-    assert vendor.problems(root, CURRENT, ()) == ["grader/arh_grader holds a symlink"]
+    (root / "grader" / "commonhill_grader" / "elsewhere").symlink_to(tmp_path)
+    assert vendor.problems(root, CURRENT, ()) == ["grader/commonhill_grader holds a symlink"]
 
 
 def test_the_digest_is_what_the_readmes_command_prints(tmp_path: Path) -> None:
@@ -164,3 +168,21 @@ def test_the_digest_is_what_the_readmes_command_prints(tmp_path: Path) -> None:
     )
     printed = subprocess.run(command, shell=True, cwd=tmp_path, check=True, capture_output=True, text=True)
     assert printed.stdout.split()[0] == vendor.digest(tmp_path)
+
+
+def test_release_10_renamed_the_copy_and_copy_moves_a_project_over(tmp_path: Path) -> None:
+    """PER-500: releases before 10 are `grader/arh_grader`, 10 on `grader/commonhill_grader`. A
+    project still pinning 9 checks there; `copy` moves it to the current release and deletes the
+    old copy, which `check` of a renamed release refuses to keep."""
+    root = project(tmp_path)
+    old = root / "grader" / "arh_grader"
+    old.mkdir()
+    (old / "__init__.py").write_text("RELEASE = 9\n")
+    assert vendor.problems(root, 9, ()) == ["grader/arh_grader isn't release 9 (its digest differs)"]
+    shutil.copytree(vendor.SDK, root / "grader" / "commonhill_grader")
+    assert vendor.problems(root, CURRENT, ()) == [
+        f"grader/arh_grader is still there: release {CURRENT} is grader/commonhill_grader, so delete it"
+    ]
+    vendor.copy(root)
+    assert not old.exists()
+    assert vendor.problems(root, CURRENT, ()) == []

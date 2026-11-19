@@ -1,22 +1,22 @@
-# arh-grader: the grader SDK
+# commonhill-grader: the grader SDK
 
 The Python package project authors use to write a grader. A grader measures the worker over the
 evaluation items, treats everything the worker sends as hostile, and writes `/result/result.json`,
 the only thing the platform reads. Standard library only (Python 3.12+).
 
 ```sh
-uv add arh-grader          # in a uv project, from this repository: uv add ./grader
+uv add commonhill-grader          # in a uv project, from this repository: uv add ./grader
 ```
 
-Each project template (commonhill/templates) vendors a copy in its `grader/arh_grader`, and so
+Each project template (commonhill/templates) vendors a copy in its `grader/commonhill_grader`, and so
 does each project, so a grader image builds without network. Authors get the current release with
-a template: `hill new` writes out a template the served CLI wheel carries. The authors' guide
-(`/api/author.md` on the platform) documents the SDK, `items.json` included, so the guide changes
+a template: `hill new` writes out a template the served CLI wheel carries. The guide
+(`/api/guide.md` on the platform) documents the SDK, `items.json` included, so the guide changes
 with the SDK.
 
 ### Releases
 
-The SDK is released in numbered releases (`arh_grader.RELEASE`); a release is the repository's
+The SDK is released in numbered releases (`commonhill_grader.RELEASE`); a release is the repository's
 tag `v<RELEASE>.0.0`. `grader/src` is the current one. An earlier one lives on in the vendored
 copies that pin it, and in its digest, which `tools/vendor.py` keeps (`RELEASES`). A project's
 vendored copy is a frozen file of its reward versions: changing it changes the project's reward
@@ -26,7 +26,7 @@ reward version's copy from its frozen files. So:
 - **A change to the SDK is a new release.** First add the current release's digest to `RELEASES`
   in `tools/vendor.py`; then change `src` and add 1 to `RELEASE`. A release, once out, never
   changes. A release's digest is the sha256 of its files' `sha256sum` listing:
-  `(cd grader/src/arh_grader && find . -type f -not -path '*/__pycache__/*' -printf '%P\n' | LC_ALL=C sort | xargs sha256sum) | sha256sum`.
+  `(cd grader/src/commonhill_grader && find . -type f -not -path '*/__pycache__/*' -printf '%P\n' | LC_ALL=C sort | xargs sha256sum) | sha256sum`.
 - **A template or project moves to a newer release** with `python3 tools/vendor.py copy DIR`
   (the templates at once, a project in its next reward version).
 - **`python3 tools/vendor.py check --release N [--kit KIT]... DIR`** says whether DIR's copy is
@@ -48,7 +48,7 @@ What each release added:
   of a last probe its deadline cut short ("Talking to the worker").
 - **Release 7:** views: `write_view` and `check_view`, what a project's pages show of a check
   besides its numbers, written in the platform's view run (`is_view_run`; "Views").
-- **Release 8:** head-to-head graders for two-player games (PER-448): `arh_grader.head_to_head`
+- **Release 8:** head-to-head graders for two-player games (PER-448): `commonhill_grader.head_to_head`
   (the run's settings from `AR_HEAD_TO_HEAD`, `Bot` with its move deadline of `turn_ms` plus
   `TRANSPORT_ALLOWANCE_MS`, the run's game pairs, `write_match` with `items.json` schema 2,
   `SeatFailed`). The authors' guide, section 4, "Two-player games".
@@ -56,12 +56,17 @@ What each release added:
   arithmetic and conversions as their SSE2 twins (FDIV as DIVSD, FSQRT as SQRTSD, FILD as
   CVTSI2SD), the microcoded and BCD instructions at their cost measured on Zen 3, where the cost
   table's default had charged one cycle each (`kits/cycles/README.md`, "x87").
+- **Release 10:** the package is `commonhill_grader` (distribution `commonhill-grader`), vendored
+  as `grader/commonhill_grader`; releases before it are `arh_grader`, in `grader/arh_grader`
+  (PER-500). `tools/vendor.py copy` moves a project over and deletes the old copy. A worker's
+  response may be up to 64 MiB (`MAX_RESPONSE_BYTES`, was 1 MiB; the per-request time-out stays
+  10 s).
 
 ## A grader in brief
 
 ```python
 import os
-from arh_grader import Client, Value, rng, wait_ready, write_result
+from commonhill_grader import Client, Value, rng, wait_ready, write_result
 
 worker_url = os.environ["WORKER_URL"]  # http://worker:8080 in compose.yaml
 # The public sample locally; on the platform the held-out set, or an open project's checked file.
@@ -91,7 +96,7 @@ platform: count the work instead (the authors' guide, section 3).
 
 ## Talking to the worker
 
-`Client(url, timeout_s=10, max_bytes=1 MiB, output_schema=None)` speaks the worker contract
+`Client(url, timeout_s=10, max_bytes=64 MiB, output_schema=None)` speaks the worker contract
 (commonhill/templates, `count/CONTRACT.md`).
 
 - **`client.run(items)`** sends one batch (`POST /run`) and returns a `Batch`: `outputs` (one per
@@ -140,7 +145,7 @@ comparison can't handle.
   `DEFAULT_STARTUP_TIMEOUT_S`, 60 s. Don't keep a copy of the budget in the grader: a `timeout_s`
   argument is for tests.
 - Since release 3, when it gives up it prints one line on stderr,
-  `arh_grader: worker not ready after 301.204 s (limit 300 s)`: the seconds it waited by the
+  `commonhill_grader: worker not ready after 301.204 s (limit 300 s)`: the seconds it waited by the
   grader's own clock, and the limit. `hill run` quotes it for an invalid run, and the exception has
   both too (`waited_s`, `limit_s`).
 
@@ -178,7 +183,7 @@ worker's).
   `begin_timed()` goes uncharged, and that is the grader author's error, which the platform
   doesn't defend against.
 - A grader that never calls it has no startup to report: `write_result` leaves `timings.startup_s`
-  out (`arh_grader.startup.began()`), and the startup cap's warning has nothing to compare.
+  out (`commonhill_grader.startup.began()`), and the startup cap's warning has nothing to compare.
 
 ## Seeds
 
@@ -307,7 +312,7 @@ nothing written). The web draws the panels itself; no code of the project's runs
   at the root, at most 20,000 elements nested at most 64 deep, and only drawing: `svg g defs title desc
   path circle ellipse rect line polyline polygon text tspan linearGradient radialGradient stop
   clipPath use` with geometry and presentation attributes (`fill`, `stroke`, `font-size`, ...;
-  `arh_grader.view.SVG_ATTRIBUTES`). No `style` (attribute or element), scripts, event handlers,
+  `commonhill_grader.view.SVG_ATTRIBUTES`). No `style` (attribute or element), scripts, event handlers,
   `<image>`, `<a>`, `<foreignObject>` or animation; `href` and `url(...)` only to an `#id` inside it.
 - **`image_panel(data, media, caption=None)`**: a PNG (`"image/png"`) or WebP (`"image/webp"`)
   image's bytes, at most 4096 pixels a side.
@@ -318,14 +323,14 @@ nothing written). The web draws the panels itself; no code of the project's runs
   optional regions (UTTT's nine small boards), and up to 2,000 frames. A frame's `clear`, `set`
   and `own` (a region won) change the board from the frame before, at most 50,000 changes a game
   (`MAX_GAME_CHANGES`); its `paths` (snakes, head first, at most one a player), `focus`
-  (highlighted regions, each once) and `note` are its own. `arh_grader.view`'s docstring has
+  (highlighted regions, each once) and `note` are its own. `commonhill_grader.view`'s docstring has
   the format; `grader/tests/data/` has a UTTT game and a Battlesnake game.
 
 A caption is 1 to 200 characters. There are 1 to 64 panels, and the whole view, as `encode_view`
 writes it (compact UTF-8 JSON), is at most 512 KiB (`MAX_VIEW_BYTES`).
 
 ```python
-from arh_grader import is_local, is_view_run, svg_panel, write_view
+from commonhill_grader import is_local, is_view_run, svg_panel, write_view
 
 
 def packing_svg(width: float, height: float, circles: list[tuple[float, float, float]]) -> str:

@@ -27,7 +27,7 @@
   the platform share (since release 7).
 - `fetch(...)`, `Checker(schema)`: the deadline-bound request and the output schema check
   underneath.
-- `arh_grader.head_to_head` (since release 8): a head-to-head version's referee side, the run's
+- `commonhill_grader.head_to_head` (since release 8): a head-to-head version's referee side, the run's
   settings (`settings()`, AR_HEAD_TO_HEAD), a seat's bot with its move deadline (`Bot`), the run's
   game pairs (`play`), and the result with items.json schema 2 (`write_match`, `check_pairs`).
 
@@ -35,12 +35,12 @@ Standard library only, so it installs anywhere (`template/dockerfile.grader` ven
 `RELEASE` is this copy's release (sdk/grader/README.md: a project vendors one release, exactly).
 """
 
-from arh_grader.client import Batch, Client, Evaluation
-from arh_grader.deadline import DEADLINE_ENV, remaining, run_deadline
-from arh_grader.fetch import FetchError, Response, fetch
-from arh_grader.oracle import ORACLE_ENV, ORACLE_PORT, ORACLE_URL, Oracle, Session
-from arh_grader.ready import STARTUP_ENV, WorkerNotReady, startup_timeout, wait_ready
-from arh_grader.result import (
+from commonhill_grader.client import Batch, Client, Evaluation
+from commonhill_grader.deadline import DEADLINE_ENV, remaining, run_deadline
+from commonhill_grader.fetch import FetchError, Response, fetch
+from commonhill_grader.oracle import ORACLE_ENV, ORACLE_PORT, ORACLE_URL, Oracle, Session
+from commonhill_grader.ready import STARTUP_ENV, WorkerNotReady, startup_timeout, wait_ready
+from commonhill_grader.result import (
     ITEMS_FILE,
     RESULT_PATH,
     SCHEMA_VERSION,
@@ -51,11 +51,11 @@ from arh_grader.result import (
     metric_lines,
     write_result,
 )
-from arh_grader.schema import Checker
-from arh_grader.seed import PUBLIC_SEED, SEED_ENV, is_local, rng, seed
-from arh_grader.startup import STARTED_ENV, begin_timed, worker_started
-from arh_grader.timing import Timings, cv, percentile, summary
-from arh_grader.view import (
+from commonhill_grader.schema import Checker
+from commonhill_grader.seed import PUBLIC_SEED, SEED_ENV, is_local, rng, seed
+from commonhill_grader.startup import STARTED_ENV, begin_timed, worker_started
+from commonhill_grader.timing import Timings, cv, percentile, summary
+from commonhill_grader.view import (
     MAX_VIEW_BYTES,
     VIEW_ENV,
     VIEW_FILE,
@@ -69,7 +69,7 @@ from arh_grader.view import (
     write_view,
 )
 
-RELEASE = 9
+RELEASE = 10
 
 __all__ = [
     "DEADLINE_ENV",

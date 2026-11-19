@@ -18,8 +18,8 @@ from typing import Any, cast
 
 import pytest
 
-from arh_grader import Client, Oracle, Session, Value, write_result
-from arh_grader.oracle import canonical
+from commonhill_grader import Client, Oracle, Session, Value, write_result
+from commonhill_grader.oracle import canonical
 
 CANARY = "oracle-heldout-canary-7c2e"
 CANARY_NUMBER = 918273645

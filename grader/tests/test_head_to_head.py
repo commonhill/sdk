@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from arh_grader.head_to_head import (
+from commonhill_grader.head_to_head import (
     CANDIDATE,
     HEAD_TO_HEAD_ENV,
     LOCAL_PAIRS,

@@ -7,7 +7,7 @@ any warmups, and reports what it returns as `timings.startup_s`; the scored phas
 without a break (unscored work after it would go uncharged: the grader author's error, not
 something the platform defends against). Readiness and warmups both count: work a worker puts
 off until its first, untimed, requests is charged like work at startup. `AR_WORKER_STARTED_AT` is
-in the grader's environment on the platform and under `arh run --pairs`; without it (plain `arh
+in the grader's environment on the platform and under `commonhill run --pairs`; without it (plain `commonhill
 run`, or the grader run by hand) the time counts from when the grader imported this SDK.
 
 A grader that never calls `begin_timed()` has no startup to report: `write_result` leaves

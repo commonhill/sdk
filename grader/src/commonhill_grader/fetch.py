@@ -21,7 +21,7 @@ from typing import cast
 
 
 class FetchError(Exception):
-    """The request failed; `kind` says how, as a failure kind (`arh_grader.result`): "timeout"
+    """The request failed; `kind` says how, as a failure kind (`commonhill_grader.result`): "timeout"
     (the deadline passed), "too_large" (a body over the cap) or "connection" (anything else:
     refused, dropped, malformed HTTP, cut short)."""
 

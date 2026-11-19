@@ -22,7 +22,7 @@ matter. Closing a session never waits for an answer: a call counted before the c
 counted, and an answer still being computed then is never sent (410).
 
 A session's token is HMAC-SHA256 of its key (the item's index or id, unique in the run, which the
-grader gives) under the run's secret seed (`arh_grader.seed`), URL-safe: the same in every run of
+grader gives) under the run's secret seed (`commonhill_grader.seed`), URL-safe: the same in every run of
 the seed whatever order the sessions are opened in, so a deterministic worker that sees it stays
 deterministic, and unpredictable without the seed, which the worker never has, so no token tells
 anything of another. Tokens appear in no result and no log.
@@ -44,8 +44,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import TracebackType
 from typing import Any, cast
 
-from arh_grader.client import loads
-from arh_grader.seed import seed
+from commonhill_grader.client import loads
+from commonhill_grader.seed import seed
 
 ORACLE_ENV = "AR_ORACLE_URL"  # the worker's: compose.yaml sets it to ORACLE_URL
 ORACLE_PORT = 8081

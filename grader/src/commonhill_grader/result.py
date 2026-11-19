@@ -18,7 +18,7 @@
 items (0) says why a run with none evaluated is invalid. Absent: the grader doesn't say (an older
 release). Only names and counts, never anything the worker sent or the evaluation data: on the
 platform they are the held-out set's failures, which only the project's author console shows.
-The SDK's kinds: a failed batch's items by its cause and a single item's problem (`arh_grader.client`),
+The SDK's kinds: a failed batch's items by its cause and a single item's problem (`commonhill_grader.client`),
 a run that couldn't be evaluated (`invalid_result`: "worker_not_ready", "grader_error"); a grader
 adds its own ("wrong" for an answer that isn't the expected one, say).
 
@@ -54,9 +54,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from arh_grader.ready import WorkerNotReady
-from arh_grader.seed import is_local
-from arh_grader.startup import began
+from commonhill_grader.ready import WorkerNotReady
+from commonhill_grader.seed import is_local
+from commonhill_grader.startup import began
 
 SCHEMA_VERSION = 1
 FAILURE_KINDS = "failure_kinds"
@@ -253,7 +253,7 @@ def write_result(
     """Write result.json (schema 1) to `path` atomically; returns what was written. ValueError,
     before anything is written, if a field doesn't fit the schema. Then prints `metric_lines`
     if `print_metrics` (by default: in a local run). `timings.startup_s` is left out unless the
-    grader called `begin_timed()` (`arh_grader.startup`): a startup it never measured isn't 0.
+    grader called `begin_timed()` (`commonhill_grader.startup`): a startup it never measured isn't 0.
     `item_scores`, if given, are the per-item scores whose mean is the primary value, written
     first, to items.json beside `path` (held-out data: see the module's docstring).
     `failure_kinds`, if given, counts the failures by kind (they must sum to `failures`)."""

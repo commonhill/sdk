@@ -15,7 +15,7 @@ import os
 import sys
 from pathlib import Path
 
-from arh_grader import RESULT_PATH, Client, Value, invalid_result, rng, wait_ready, write_result
+from commonhill_grader import RESULT_PATH, Client, Value, invalid_result, rng, wait_ready, write_result
 
 GRADER_VERSION = "accuracy-example-1"
 BATCH_SIZE = 20

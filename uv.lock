@@ -4,13 +4,13 @@ requires-python = ">=3.13"
 
 [manifest]
 members = [
-    "arh-grader",
+    "commonhill-grader",
     "arh-testkit",
     "commonhill-sdk",
 ]
 
 [[package]]
-name = "arh-grader"
+name = "commonhill-grader"
 version = "0.1.0"
 source = { editable = "grader" }
 
@@ -41,7 +41,7 @@ source = { virtual = "." }
 
 [package.dev-dependencies]
 dev = [
-    { name = "arh-grader" },
+    { name = "commonhill-grader" },
     { name = "arh-testkit" },
     { name = "pyright", extra = ["nodejs"] },
     { name = "pytest" },
@@ -54,7 +54,7 @@ dev = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "arh-grader", editable = "grader" },
+    { name = "commonhill-grader", editable = "grader" },
     { name = "arh-testkit", editable = "testkit" },
     { name = "pyright", extras = ["nodejs"], specifier = ">=1.1.414" },
     { name = "pytest", specifier = ">=9.1" },

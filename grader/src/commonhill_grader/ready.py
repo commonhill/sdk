@@ -1,12 +1,12 @@
 """Waiting for the worker to be ready (CONTRACT.md: `GET /healthz` answers 200 when ready).
 
-How long to wait is the project's `runner.startup_timeout_s` (autoresearch.toml), which the
-platform and `arh run` (plain or `--pairs`) give the grader as `AR_STARTUP_TIMEOUT_S`; graders
+How long to wait is the project's `runner.startup_timeout_s` (commonhill.toml), which the
+platform and `commonhill run` (plain or `--pairs`) give the grader as `AR_STARTUP_TIMEOUT_S`; graders
 don't keep a copy of it. Without it (the grader run by hand, `docker compose up`) the wait is
 DEFAULT_STARTUP_TIMEOUT_S, sized for a loaded machine.
 
 When the worker isn't ready in time (release 3), `wait_ready` prints how long it waited and the
-limit on stderr, one line (`NOT_READY_LINE`), before it raises: `arh run` reads it to say why the
+limit on stderr, one line (`NOT_READY_LINE`), before it raises: `commonhill run` reads it to say why the
 run is invalid, whatever the grader then prints.
 """
 
@@ -15,7 +15,7 @@ import os
 import sys
 import time
 
-from arh_grader.fetch import FetchError, fetch
+from commonhill_grader.fetch import FetchError, fetch
 
 STARTUP_ENV = "AR_STARTUP_TIMEOUT_S"
 DEFAULT_STARTUP_TIMEOUT_S = 60.0
@@ -24,7 +24,7 @@ PROBE_TIMEOUT_S = 2.0
 # A /healthz body larger than this makes the probe fail; the body itself doesn't matter.
 MAX_HEALTH_BYTES = 4096
 # What `wait_ready` prints when it gives up: the seconds it waited, and the limit.
-NOT_READY_LINE = "arh_grader: worker not ready after {waited:.3f} s (limit {limit:g} s)"
+NOT_READY_LINE = "commonhill_grader: worker not ready after {waited:.3f} s (limit {limit:g} s)"
 
 
 class WorkerNotReady(TimeoutError):

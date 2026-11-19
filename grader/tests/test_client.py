@@ -9,7 +9,8 @@ from typing import Any
 
 import pytest
 
-from arh_grader import Client, Value, write_result
+from commonhill_grader import Client, Value, write_result
+from commonhill_grader.client import MAX_RESPONSE_BYTES
 
 type Script = list[tuple[float, bytes]]
 type Start = Callable[[Callable[[bytes], Script]], Any]
@@ -40,13 +41,13 @@ def answer_with(worker_scripts: Any, body: bytes, status: bytes = b"200 OK") -> 
 
 def hostile(worker_scripts: Any) -> dict[str, tuple[Callable[[bytes], Script], str]]:
     """Workers the ticket lists (and a few more), and the error each batch should record."""
-    big = 50 * 1024 * 1024
+    big = 80 * 1024 * 1024  # past the 64 MiB a response may be (release 10)
     return {
         "hangs": (lambda _: [(30, b"")], "timed out"),
         "answers slowly": (lambda r: [(1.0, b""), *worker_scripts.echo(r)], "timed out"),
-        "sends 50 MB": (
+        "sends 80 MB": (
             lambda _: [(0, b"HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n" % big + b"[" * big)],
-            "response body over 1048576 bytes",
+            f"response body over {MAX_RESPONSE_BYTES} bytes",
         ),
         "sends malformed JSON": (
             answer_with(worker_scripts, b'{"outputs": [' + LEAK),
@@ -105,7 +106,7 @@ def failure_kind(error: str) -> str:
     [
         "hangs",
         "answers slowly",
-        "sends 50 MB",
+        "sends 80 MB",
         "sends malformed JSON",
         "nests JSON 100000 deep",
         "sends outputs of the wrong type",
@@ -250,7 +251,7 @@ def test_a_check_that_raises_fails_only_its_item(scripted_http: Start, worker_sc
 
 def count_encoding(monkeypatch: pytest.MonkeyPatch) -> list[int]:
     """From now on, the length of every canonical encoding the schema check makes."""
-    import arh_grader.schema as schema_module
+    import commonhill_grader.schema as schema_module
 
     encoded: list[int] = []
     real = schema_module.canonical

@@ -1,9 +1,10 @@
 """Vendoring the sdk into a project or a template (PER-478): the grader SDK, as
-`grader/arh_grader`, and the kits a project uses: the instruction-count kit (its marker
-`grader/native/insncap.c`) and the cycles kit (`grader/native/valgrind.patch`).
+`grader/commonhill_grader` (`grader/arh_grader` before release 10), and the kits a project uses:
+the instruction-count kit (its marker `grader/native/insncap.c`) and the cycles kit
+(`grader/native/valgrind.patch`).
 
     python3 tools/vendor.py copy [--kit KIT]... DIR...
-        the current SDK release into each DIR's grader/arh_grader, and each kit named or found
+        the current SDK release into each DIR's grader/commonhill_grader, and each kit named or found
         by its marker in DIR
     python3 tools/vendor.py copy --kits-only [--kit KIT]... DIR...
         the kits alone (a project keeps the SDK release it pins until its next version)
@@ -14,7 +15,7 @@
 `check` is told what DIR should have rather than reading it from DIR, so a copy deleted, or a
 kit's marker deleted with it, fails it too: a project's CI states its release and kits there,
 running the sdk at any tag from the one it pins on (README.md, "Releases"). An earlier release is
-checked by its digest (`RELEASES`), the current one (`grader/src/arh_grader`) file by file
+checked by its digest (`RELEASES`), the current one (`grader/src/commonhill_grader`) file by file
 (grader/README.md, "Releases"). A vendored copy is a frozen file of its project's reward
 versions, so `copy` is for a template, a new project, or a project's next reward version.
 """
@@ -28,8 +29,10 @@ from collections.abc import Collection
 from pathlib import Path
 
 SDK_ROOT = Path(__file__).resolve().parents[1]
-SDK = SDK_ROOT / "grader" / "src" / "arh_grader"
-VENDORED = Path("grader") / "arh_grader"
+SDK = SDK_ROOT / "grader" / "src" / "commonhill_grader"
+VENDORED = Path("grader") / "commonhill_grader"
+# Where a release before 10 sits in a project: the SDK was `arh_grader` until then (PER-500).
+OLD_VENDORED, FIRST_RENAMED = Path("grader") / "arh_grader", 10
 # Each kit: its files (laid out as in a project) and the file that says a project uses it.
 KITS = {
     "insncap": (SDK_ROOT / "kits" / "insncap" / "project", Path("grader") / "native" / "insncap.c"),
@@ -41,6 +44,7 @@ RELEASES = {
     5: "8599504601d35f65dd99621a3357230ab4cfc5ee6d0118f8fa5ded38512cdc3f",
     6: "cd25b625c8a4862158fbc022588e2f70f9d986f5d87f18f53d75de6605f9efb4",
     8: "78aa4c67ac367679f86cfd903bca6e8a4678aa870bc484384bc75ac56dc48908",
+    9: "d7d3ebc529a30c2fe8d8ef0287d9b66564429446a552cc7f3dcc2acb77120902",
 }
 RELEASE_LINE = re.compile(r"^RELEASE = (\d+)$", re.MULTILINE)
 
@@ -78,27 +82,36 @@ def kits_of(directory: Path) -> list[str]:
     return [name for name, (_, marker) in KITS.items() if (directory / marker).is_file()]
 
 
+def vendored_at(release: int) -> Path:
+    """Where release `release` sits in a project: `grader/commonhill_grader`, or, before 10,
+    `grader/arh_grader`."""
+    return VENDORED if release >= FIRST_RENAMED else OLD_VENDORED
+
+
 def problems(directory: Path, pinned: int, kits: Collection[str]) -> list[str]:
     """How `directory`'s vendored copies differ from release `pinned` of the SDK and exactly the
     kits `kits`; nothing when they don't."""
     found: list[str] = []
-    vendored = directory / VENDORED
+    where = vendored_at(pinned)
+    vendored = directory / where
     if not vendored.is_dir():
-        found.append(f"no {VENDORED} (release {pinned} expected)")
+        found.append(f"no {where} (release {pinned} expected)")
     elif any(p.is_symlink() for p in vendored.rglob("*")):
-        found.append(f"{VENDORED} holds a symlink")
+        found.append(f"{where} holds a symlink")
     elif (said := release(vendored)) is None:
-        found.append(f"{VENDORED}/__init__.py says no RELEASE (release {pinned} expected)")
+        found.append(f"{where}/__init__.py says no RELEASE (release {pinned} expected)")
     elif said != pinned:
-        found.append(f"{VENDORED} says release {said}, not {pinned}")
+        found.append(f"{where} says release {said}, not {pinned}")
     elif pinned == CURRENT:
         theirs, ours = files(vendored), files(SDK)
         changed = sorted(name for name in theirs.keys() | ours.keys() if theirs.get(name) != ours.get(name))
-        found += [f"{VENDORED}/{name} isn't release {pinned}'s" for name in changed]
+        found += [f"{where}/{name} isn't release {pinned}'s" for name in changed]
     elif pinned not in RELEASES:
         found.append(f"release {pinned} is one the sdk doesn't know")
     elif digest(vendored) != RELEASES[pinned]:
-        found.append(f"{VENDORED} isn't release {pinned} (its digest differs)")
+        found.append(f"{where} isn't release {pinned} (its digest differs)")
+    if pinned >= FIRST_RENAMED and (directory / OLD_VENDORED).exists():
+        found.append(f"{OLD_VENDORED} is still there: release {pinned} is {VENDORED}, so delete it")
     for kit in sorted(set(kits_of(directory)) - set(kits)):
         found.append(f"{KITS[kit][1]} says it uses the {kit} kit, which it shouldn't")
     for kit in kits:
@@ -115,10 +128,10 @@ def copy(directory: Path, kits_only: bool = False, kits: Collection[str] = ()) -
     """The current SDK release (unless `kits_only`), and the kits `kits` names and those whose
     markers `directory` has, into it."""
     if not kits_only:
-        vendored = directory / VENDORED
-        if vendored.exists():
-            shutil.rmtree(vendored)
-        shutil.copytree(SDK, vendored, ignore=shutil.ignore_patterns("__pycache__"))
+        for vendored in (directory / VENDORED, directory / OLD_VENDORED):  # the old name goes too
+            if vendored.exists():
+                shutil.rmtree(vendored)
+        shutil.copytree(SDK, directory / VENDORED, ignore=shutil.ignore_patterns("__pycache__"))
     for kit in sorted({*kits, *kits_of(directory)}):
         shutil.copytree(
             KITS[kit][0], directory, dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__")

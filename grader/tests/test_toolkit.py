@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from arh_grader import (
+from commonhill_grader import (
     PUBLIC_SEED,
     Checker,
     Timings,
@@ -307,7 +307,7 @@ def test_nested_enum_and_const_encode_each_output_once(
 ) -> None:
     """A const at every level of a 240-deep array: the output is encoded once, by the outermost
     const (overlapping re-encoding would be 58 081 characters for 481)."""
-    import arh_grader.schema as schema_module
+    import commonhill_grader.schema as schema_module
 
     checker = Checker(const_at_every_level(240))
     encoded: list[int] = []

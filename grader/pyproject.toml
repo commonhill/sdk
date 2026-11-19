@@ -1,5 +1,5 @@
 [project]
-name = "arh-grader"
+name = "commonhill-grader"
 version = "0.1.0"
 description = "Commonhill grader SDK: wait for the worker, the run's seed, result.json (schema 1)"
 license = "Apache-2.0"

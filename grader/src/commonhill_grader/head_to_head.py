@@ -43,9 +43,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from arh_grader.client import Client
-from arh_grader.deadline import remaining
-from arh_grader.result import (
+from commonhill_grader.client import Client
+from commonhill_grader.deadline import remaining
+from commonhill_grader.result import (
     ITEMS_FILE,
     RESULT_PATH,
     Value,
