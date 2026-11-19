@@ -3,6 +3,7 @@ built on the Client finishes in time, counts the failures and writes a valid res
 
 import json
 import time
+import tracemalloc
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -10,7 +11,7 @@ from typing import Any
 import pytest
 
 from commonhill_grader import Client, Value, write_result
-from commonhill_grader.client import MAX_RESPONSE_BYTES
+from commonhill_grader.client import MAX_RESPONSE_BYTES, json_values
 
 type Script = list[tuple[float, bytes]]
 type Start = Callable[[Callable[[bytes], Script]], Any]
@@ -48,6 +49,14 @@ def hostile(worker_scripts: Any) -> dict[str, tuple[Callable[[bytes], Script], s
         "sends 80 MB": (
             lambda _: [(0, b"HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n" % big + b"[" * big)],
             f"response body over {MAX_RESPONSE_BYTES} bytes",
+        ),
+        "sends 2 million empty lists": (
+            answer_with(worker_scripts, b'{"outputs": [' + b"[]," * 2_000_000 + b'"c"]}'),
+            "over 3000002 JSON values",  # one million per item
+        ),
+        "sends UTF-16": (
+            answer_with(worker_scripts, '{"outputs": ["a", "b", "c"]}'.encode("utf-16-le")),
+            "not JSON (not UTF-8)",
         ),
         "sends malformed JSON": (
             answer_with(worker_scripts, b'{"outputs": [' + LEAK),
@@ -95,7 +104,8 @@ def failure_kind(error: str) -> str:
     if error.startswith("HTTP "):
         return "http_" + error.removeprefix("HTTP ")
     for prefix, found in (("timed out", "timeout"), ("response body over", "too_large"),
-                          ("not JSON", "not_json"), ("not {", "bad_shape")):  # fmt: skip
+                          ("over ", "too_large"), ("not JSON", "not_json"),
+                          ("not {", "bad_shape")):  # fmt: skip
         if error.startswith(prefix):
             return found
     return "wrong_count" if error.endswith("for 3 items") else "connection"
@@ -107,6 +117,8 @@ def failure_kind(error: str) -> str:
         "hangs",
         "answers slowly",
         "sends 80 MB",
+        "sends 2 million empty lists",
+        "sends UTF-16",
         "sends malformed JSON",
         "nests JSON 100000 deep",
         "sends outputs of the wrong type",
@@ -157,6 +169,51 @@ def test_a_grader_survives_a_hostile_worker_and_writes_a_valid_result(
     assert result["timings"]["batches"] == 3
     out = capsys.readouterr()
     assert "SECRET-WORKER-DATA" not in out.out + out.err + json.dumps(result) + json.dumps(evaluation.errors)
+
+
+def test_a_body_of_many_small_values_is_refused_before_it_is_decoded(
+    scripted_http: Start, worker_scripts: Any
+) -> None:
+    """Sol's P1 on PER-500: 64 MiB of `[]` decodes to ~1.4 GB of lists. The values are counted
+    first, so the batch fails as too_large with memory to spare (decoding these 15 MB of `{}` would
+    take ~375 MB)."""
+    body = b'{"outputs": [' + b"{}," * 5_000_000 + b'"c"]}'
+    server = scripted_http(answer_with(worker_scripts, body))
+    client = Client(server.url, timeout_s=60)
+
+    tracemalloc.start()
+    try:
+        batch = client.run(["a", "b", "c"])
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert (batch.error, batch.kind) == ("over 3000002 JSON values", "too_large")
+    assert batch.outputs == [None] * 3
+    # The body read, and its copy without strings: a few times its size, not decoding's 25.
+    assert peak < 4 * len(body), f"peak {peak} bytes for a {len(body)}-byte body"
+
+
+def test_values_are_counted_as_decoding_makes_them() -> None:
+    """At least the values decoding makes; strings' contents, escaped quotes included, aren't."""
+    for body, decoded in [
+        (b"1", 1),
+        (b'{"outputs": ["a", "b", "c"]}', 5),
+        (b'{"outputs": [[1, 2], {"k": [3]}]}', 8),
+        (json.dumps({"outputs": ["[,{:\\", '\\"[[[[', ",,,"]}).encode(), 5),
+        ('["\\u00e9 é {,", 2]'.encode(), 3),
+    ]:
+        assert json_values(body) >= decoded, body
+        assert json_values(body) <= decoded + 3, body
+
+
+def test_a_batch_may_hold_up_to_its_items_values(scripted_http: Start, worker_scripts: Any) -> None:
+    body = json.dumps({"outputs": [[0] * 999_990, "b"]}).encode()
+    server = scripted_http(answer_with(worker_scripts, body))
+    batch = Client(server.url, timeout_s=60).run(["a", "b"])
+    assert (batch.error, batch.failures) == (None, 0)
+    batch = Client(server.url, timeout_s=60, max_values=100).run(["a", "b"])
+    assert (batch.error, batch.kind) == ("over 100 JSON values", "too_large")
 
 
 def test_only_the_bad_batch_fails(scripted_http: Start, worker_scripts: Any) -> None:

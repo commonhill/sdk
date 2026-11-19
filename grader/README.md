@@ -60,7 +60,9 @@ What each release added:
   as `grader/commonhill_grader`; releases before it are `arh_grader`, in `grader/arh_grader`
   (PER-500). `tools/vendor.py copy` moves a project over and deletes the old copy. A worker's
   response may be up to 64 MiB (`MAX_RESPONSE_BYTES`, was 1 MiB; the per-request time-out stays
-  10 s).
+  10 s), and must be UTF-8 JSON of at most 1 million values per item and 4 million in all
+  (`MAX_VALUES_PER_OUTPUT`, `MAX_VALUES`), counted before it is decoded: 64 MiB of `[]` would
+  decode to about 1.4 GB.
 
 ## A grader in brief
 
@@ -96,8 +98,8 @@ platform: count the work instead (the authors' guide, section 3).
 
 ## Talking to the worker
 
-`Client(url, timeout_s=10, max_bytes=64 MiB, output_schema=None)` speaks the worker contract
-(commonhill/templates, `count/CONTRACT.md`).
+`Client(url, timeout_s=10, max_bytes=64 MiB, max_values=4 million, output_schema=None)` speaks the
+worker contract (commonhill/templates, `count/CONTRACT.md`).
 
 - **`client.run(items)`** sends one batch (`POST /run`) and returns a `Batch`: `outputs` (one per
   item, `None` where the item failed), `seconds` (measured by the grader) and `error` (why the
@@ -109,10 +111,10 @@ platform: count the work instead (the authors' guide, section 3).
 Nothing the worker does raises. **A whole batch fails** when the response is:
 
 - late (an absolute deadline over connecting, headers and body);
-- larger than `max_bytes`;
+- larger than `max_bytes`, or holding more JSON values than 1 million per item or `max_values`;
 - malformed HTTP, or cut off;
 - not exactly `200` (redirects are never followed);
-- not strict JSON (`NaN`, `Infinity` and numbers that overflow a float, like `1e999`, are refused
+- not strict UTF-8 JSON (`NaN`, `Infinity` and numbers that overflow a float, like `1e999`, are refused
   anywhere in the body), or nested too deeply;
 - not `{"outputs": [...]}` with one output per item.
 
@@ -246,8 +248,8 @@ written first, to `items.json` beside the result (`{"schema": 1, "item_scores": 
 to 40 of `a-z`, `0-9`, `_`, `.`, `-`; and a count of 0 is allowed (a run-level reason when no item
 was evaluated). Without it, the platform and `hill run` know only the count. The SDK's kinds:
 
-- a failed batch's items, by its cause (`Batch.kind`): `timeout`, `too_large`, `connection`
-  (refused, dropped, malformed HTTP, cut short), `http_<status>`, `not_json`, `bad_shape` (not
+- a failed batch's items, by its cause (`Batch.kind`): `timeout`, `too_large` (bytes or JSON
+  values), `connection` (refused, dropped, malformed HTTP, cut short), `http_<status>`, `not_json`, `bad_shape` (not
   `{"outputs": [...]}`), `wrong_count` (another number of outputs than items);
 - an item's own problem: `null`, `schema`, `check_error` (the check raised);
 - a run that couldn't be evaluated (`invalid_result`): `worker_not_ready`, `grader_error`, or the

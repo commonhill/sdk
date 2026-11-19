@@ -6,7 +6,9 @@ does. Everything that can go wrong is counted as item failures instead:
 
 - the whole batch fails (every output None) when the request fails (`fetch`: timeout against an
   absolute deadline, connection refused or dropped, malformed HTTP, a body over the cap), the
-  status isn't exactly 200, the body isn't strict JSON (`NaN`, `Infinity` and numbers too large
+  status isn't exactly 200, the body holds more JSON values than the batch may (`max_values`, at
+  most `MAX_VALUES_PER_OUTPUT` per item: counted before decoding, so a body of `[]`s can't take
+  gigabytes to decode), the body isn't strict UTF-8 JSON (`NaN`, `Infinity` and numbers too large
   for a float, like `1e999`, are refused anywhere in it; so is nesting too deep to decode), or it
   isn't `{"outputs": [...]}` with exactly one output per item;
 - a single item fails when its output is `null` or doesn't match the output schema
@@ -17,8 +19,8 @@ results and times are thrown away), then every item once, timed per batch. Nothi
 sends is ever logged; `Batch.error` names only the kind of failure.
 
 Each failed item has a failure kind (since the SDK's release 4; `commonhill_grader.result`'s
-`failure_kinds`): its whole batch's (`Batch.kind`: "timeout", "too_large", "connection",
-"http_<status>", "not_json", "bad_shape" for a body that isn't `{"outputs": [...]}`, "wrong_count"
+`failure_kinds`): its whole batch's (`Batch.kind`: "timeout", "too_large" (bytes or values),
+"connection", "http_<status>", "not_json", "bad_shape" for a body that isn't `{"outputs": [...]}`, "wrong_count"
 for a check that raised). `Evaluation.failure_kinds()` counts them, summing to its failures.
 
 With an oracle (since release 5, `commonhill_grader.oracle`), `run` and `evaluate` take the items'
@@ -29,6 +31,7 @@ over its cap fails as "oracle_cap", whatever its output (a whole batch's failure
 
 import json
 import math
+import re
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -45,6 +48,12 @@ if TYPE_CHECKING:
 # CONTRACT.md's defaults.
 REQUEST_TIMEOUT_S = 10.0
 MAX_RESPONSE_BYTES = 64 * 1024 * 1024
+# The most JSON values (containers, keys' values, items, scalars) a response may hold: at most this
+# many per item, and this many in all. Decoding takes up to ~90 bytes of memory per value.
+MAX_VALUES_PER_OUTPUT = 1_000_000
+MAX_VALUES = 4_000_000
+# A JSON string, as JSON lexes it (in UTF-8, no multibyte sequence holds an ASCII byte).
+_STRING = re.compile(rb'"[^"\\]*(?:\\.[^"\\]*)*"', re.DOTALL)
 
 
 @dataclass(frozen=True)
@@ -93,11 +102,13 @@ class Client:
         *,
         timeout_s: float = REQUEST_TIMEOUT_S,
         max_bytes: int = MAX_RESPONSE_BYTES,
+        max_values: int = MAX_VALUES,
         output_schema: Mapping[str, object] | None = None,
     ) -> None:
         self.run_url = url.rstrip("/") + "/run"
         self.timeout_s = timeout_s
         self.max_bytes = max_bytes
+        self.max_values = max_values
         self.check: Callable[[object], str | None] = Checker(output_schema) if output_schema else _any
 
     def run(
@@ -131,6 +142,11 @@ class Client:
         if response.status != 200:
             status = response.status
             return Batch([None] * len(items), seconds, f"HTTP {status}", kind=f"http_{status}")
+        cap = min(self.max_values, 2 + MAX_VALUES_PER_OUTPUT * len(items))
+        if json.detect_encoding(response.body) not in ("utf-8", "utf-8-sig"):
+            return Batch([None] * len(items), seconds, "not JSON (not UTF-8)", kind="not_json")
+        if json_values(response.body) > cap:
+            return Batch([None] * len(items), seconds, f"over {cap} JSON values", kind="too_large")
         try:
             decoded = loads(response.body)
         except (ValueError, RecursionError) as exc:
@@ -212,6 +228,13 @@ def _finite_float(text: str) -> float:
 
 def _no_constant(name: str) -> object:
     raise ValueError("NaN and Infinity aren't JSON")
+
+
+def json_values(body: bytes) -> int:
+    """How many values UTF-8 JSON `body` holds, at least as many as decoding it makes up to where
+    it fails, if it does: one, and one more for each `[`, `{`, `,` and `:` outside strings."""
+    bare = _STRING.sub(b"", body)
+    return 1 + sum(bare.count(mark) for mark in (b"[", b"{", b",", b":"))
 
 
 def loads(data: bytes | str) -> object:
