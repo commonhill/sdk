@@ -45,6 +45,7 @@ RELEASES = {
     6: "cd25b625c8a4862158fbc022588e2f70f9d986f5d87f18f53d75de6605f9efb4",
     8: "78aa4c67ac367679f86cfd903bca6e8a4678aa870bc484384bc75ac56dc48908",
     9: "d7d3ebc529a30c2fe8d8ef0287d9b66564429446a552cc7f3dcc2acb77120902",
+    10: "c1b634915e400e5fda268fcbed5825f838ab10dbaaa57a66bcab4c9bad4513a7",
 }
 RELEASE_LINE = re.compile(r"^RELEASE = (\d+)$", re.MULTILINE)
 

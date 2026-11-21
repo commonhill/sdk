@@ -74,7 +74,7 @@ def image(
     """The kit's image, built once per session from kits/insncap/project and probe.dockerfile
     (PER-344: `build_image` fetches its pinned downloads first, and fails rather than hangs)."""
     digest = _digest(KIT)
-    tag = f"arh-insncap-probe:{digest}"
+    tag = f"commonhill-insncap-probe:{digest}"
 
     def build(path: Path) -> None:
         build_image("-f", str(KIT / "probe.dockerfile"), "-t", tag, str(KIT / "project"), keyed=True)
@@ -101,7 +101,7 @@ def readable(path: Path) -> Path:
 
 @pytest.fixture
 def volume() -> Iterator[str]:
-    name = f"arh-insncap-{uuid.uuid4().hex[:12]}"
+    name = f"commonhill-insncap-{uuid.uuid4().hex[:12]}"
     docker("volume", "create", name)
     try:
         yield name
@@ -412,7 +412,7 @@ def test_a_tree_counts_the_same_wherever_its_files_are_and_hides_the_host(
     assert seen["write"] == "PermissionError"
     assert seen["stat"] == [1, 1, 0, 1767225600.0, True]
     assert seen["listing"] == sorted(seen["listing"])
-    assert seen["ids"] == [2, 0, "arh", [0], "/"]
+    assert seen["ids"] == [2, 0, "commonhill", [0], "/"]
     assert seen == json.loads(on_tmpfs[0][2])
 
 

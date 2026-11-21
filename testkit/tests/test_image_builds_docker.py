@@ -1,4 +1,4 @@
-"""The tests' image builds can't hang (PER-344) and ride out a flaky mirror (PER-388), arh_testkit's
+"""The tests' image builds can't hang (PER-344) and ride out a flaky mirror (PER-388), commonhill_testkit's
 (testkit/): every download a Dockerfile makes is pinned, so the builders fetch it first; a `docker
 build` that goes silent fails with its stalled step named; a stalled, trickling or wrong download
 fails its attempts and then the fixture; a pinned download warmed from another URL is a cache hit
@@ -29,10 +29,10 @@ from typing import Any
 
 import pytest
 
-import arh_testkit.docker
+import commonhill_testkit.docker
 
 ROOT = Path(__file__).parents[2]
-TESTKIT_DOCKER = "testkit/src/arh_testkit/docker.py"  # where ARH_REAL_DOCKER is set
+TESTKIT_DOCKER = "testkit/src/commonhill_testkit/docker.py"  # where COMMONHILL_REAL_DOCKER is set
 # A pinned download whose ADD runs over two lines, as enwik-fresh's worker fetches zig.
 MULTILINE_ADD = Path(__file__).parent / "fixtures" / "multiline-add.dockerfile"
 
@@ -70,8 +70,8 @@ def test_every_download_a_dockerfile_makes_is_pinned_so_the_builders_fetch_it_fi
 
 @pytest.fixture
 def harness() -> ModuleType:
-    """arh_testkit's builds, the module whose names the tests patch."""
-    return arh_testkit.docker
+    """commonhill_testkit's builds, the module whose names the tests patch."""
+    return commonhill_testkit.docker
 
 
 @pytest.fixture(autouse=True)
@@ -80,8 +80,8 @@ def own_turns(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     their own), which no other test's build asks for: each test's builds take turns among
     themselves (PER-437), so its retries alone wait for no other test's builds, nor hold the
     others off."""
-    monkeypatch.setenv("ARH_BUILD_TURN_LOCK", str(tmp_path / "build-turn.lock"))
-    monkeypatch.setenv("ARH_BUILD_TURN_GATE", str(tmp_path / "build-turn.gate"))
+    monkeypatch.setenv("COMMONHILL_BUILD_TURN_LOCK", str(tmp_path / "build-turn.lock"))
+    monkeypatch.setenv("COMMONHILL_BUILD_TURN_GATE", str(tmp_path / "build-turn.gate"))
 
 
 # The stall limit the stall tests build under: past what a loaded runner keeps a build silent
@@ -89,7 +89,7 @@ def own_turns(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 # definition` and the base's metadata: over 10 s on main's run 42410403253, 5 s on 41982492931).
 STALL_S = 60
 # `local_base`'s tag: in no registry, so BuildKit takes it from the daemon's store.
-LOCAL_BASE = "arh-test/busybox-builds:1.37-musl"
+LOCAL_BASE = "commonhill-test/busybox-builds:1.37-musl"
 
 
 class Stalling(http.server.BaseHTTPRequestHandler):
@@ -633,7 +633,7 @@ def test_a_build_stalled_on_a_step_another_build_waits_on_fetches_afresh_when_bu
     started once the first's fetch stalled. BuildKit runs the step once for every build asking for
     it and kills it only once none waits on it, so an attempt built again while the other build
     still waited joined the hung fetch again. The attempt after a stall starts alone
-    (arh_testkit's bin/docker): once both first attempts are gone, each build's second attempt fetches
+    (commonhill_testkit's bin/docker): once both first attempts are gone, each build's second attempt fetches
     afresh, and both builds fail saying so.
 
     What it counts doesn't hang on timing (PER-457: on a loaded runner, 30 s didn't take the first
@@ -698,14 +698,15 @@ def test_a_build_stalled_on_a_step_another_build_waits_on_fetches_afresh_when_bu
 
 
 def test_every_docker_a_test_runs_is_the_one_that_takes_turns(harness: ModuleType) -> None:
-    """PER-437: `docker` on the tests' PATH is arh_testkit's bin/docker, whatever runs it, and no
-    code reaches Docker another way: no `docker` by its path, no Docker SDK, no ARH_REAL_DOCKER but
-    arh_testkit's (which only hands it to its bin/docker)."""
+    """PER-437: `docker` on the tests' PATH is commonhill_testkit's bin/docker, whatever runs it, and no
+    code reaches Docker another way: no `docker` by its path, no Docker SDK, no COMMONHILL_REAL_DOCKER but
+    commonhill_testkit's (which only hands it to its bin/docker)."""
     assert shutil.which("docker") == str(harness.DOCKER_TURNS_BIN / "docker")
-    assert Path(os.environ["ARH_REAL_DOCKER"]).parent != harness.DOCKER_TURNS_BIN
+    assert Path(os.environ["COMMONHILL_REAL_DOCKER"]).parent != harness.DOCKER_TURNS_BIN
     listed = subprocess.run(["git", "ls-files", "*.py"], cwd=ROOT, capture_output=True, text=True, check=True)
     bypass = re.compile(
-        r"""^\s*(?:import|from)\s+docker\b|["'](?:/[\w.-]+)*/bin/docker["']|ARH_REAL_DOCKER""", re.MULTILINE
+        r"""^\s*(?:import|from)\s+docker\b|["'](?:/[\w.-]+)*/bin/docker["']|COMMONHILL_REAL_DOCKER""",
+        re.MULTILINE,
     )
     found = {
         name: bypass.findall((ROOT / name).read_text())
@@ -723,10 +724,10 @@ def locked(path: Path, mode: int) -> Generator[None]:
 
 
 def docker(tmp_path: Path, *args: str, turn: str = "", **env: str) -> subprocess.Popen[str]:
-    """arh_testkit's bin/docker with `args`, its lock and gate in `tmp_path`, no build args unless `env`
-    gives them, and, as the real docker, a script that prints its ARH_BUILD_TURN and arguments (a
-    compose project's images: `img`, there once `tmp_path/there` is; with SLEEP set, it sleeps that
-    long first)."""
+    """commonhill_testkit's bin/docker with `args`, its lock and gate in `tmp_path`, no build args
+    unless `env` gives them, and, as the real docker, a script that prints its COMMONHILL_BUILD_TURN
+    and arguments (a compose project's images: `img`, there once `tmp_path/there` is; with SLEEP
+    set, it sleeps that long first)."""
     real = tmp_path / "real-docker"
     if not real.exists():
         real.write_text(
@@ -734,20 +735,20 @@ def docker(tmp_path: Path, *args: str, turn: str = "", **env: str) -> subprocess
             'case "$*" in\n'
             '  *"config --images"*) echo img ;;\n'
             f'  *"image inspect"*) [ -f {tmp_path}/there ] ;;\n'
-            '  *) sleep "${SLEEP:-0}"; echo "$ARH_BUILD_TURN $*" ;;\n'
+            '  *) sleep "${SLEEP:-0}"; echo "$COMMONHILL_BUILD_TURN $*" ;;\n'
             "esac\n"
         )
         real.chmod(0o755)
-    wrapper = arh_testkit.docker.DOCKER_TURNS_BIN / "docker"
+    wrapper = commonhill_testkit.docker.DOCKER_TURNS_BIN / "docker"
     return subprocess.Popen(
         [str(wrapper), *args],
         env={
             **os.environ,
-            "ARH_REAL_DOCKER": str(real),
-            "ARH_BUILD_TURN_LOCK": str(tmp_path / "lock"),
-            "ARH_BUILD_TURN_GATE": str(tmp_path / "gate"),
-            "ARH_BUILD_TURN": turn,
-            "ARH_TEST_BUILD_ARGS": "",
+            "COMMONHILL_REAL_DOCKER": str(real),
+            "COMMONHILL_BUILD_TURN_LOCK": str(tmp_path / "lock"),
+            "COMMONHILL_BUILD_TURN_GATE": str(tmp_path / "gate"),
+            "COMMONHILL_BUILD_TURN": turn,
+            "COMMONHILL_TEST_BUILD_ARGS": "",
             **env,
         },
         stdout=subprocess.PIPE,
@@ -792,7 +793,7 @@ def test_a_command_that_builds_waits_for_its_turn_and_any_other_runs_at_once(tmp
 
 def test_a_compose_start_whose_images_are_there_runs_at_once_unless_told_to_build(tmp_path: Path) -> None:
     """PER-457: `compose run`, `up` and `create` with every image of the project there build
-    nothing, so they never wait behind builds (`arh run`'s `run --rm ... cat` waited 20 minutes
+    nothing, so they never wait behind builds (`hill run`'s `run --rm ... cat` waited 20 minutes
     behind them); with `--build` they still wait."""
     (tmp_path / "there").touch()
     with locked(tmp_path / "lock", fcntl.LOCK_EX):
@@ -822,10 +823,10 @@ def test_a_compose_start_whose_images_are_there_runs_at_once_unless_told_to_buil
 
 
 def test_every_build_gets_the_mirrors_build_args_before_its_own(tmp_path: Path) -> None:
-    """PER-457: ARH_TEST_BUILD_ARGS's KEY=VALUE lines are build args of every build, right after its
+    """PER-457: COMMONHILL_TEST_BUILD_ARGS's KEY=VALUE lines are build args of every build, right after its
     `build` (a compose option's value `build` isn't it), so the build's own come after and win;
     nothing else gets them."""
-    args = {"ARH_TEST_BUILD_ARGS": "PIP_INDEX_URL=http://mirror/simple/\nA=b c"}
+    args = {"COMMONHILL_TEST_BUILD_ARGS": "PIP_INDEX_URL=http://mirror/simple/\nA=b c"}
     mirrors = "--build-arg PIP_INDEX_URL=http://mirror/simple/ --build-arg A=b c"
     runs = {
         ("build", "-t", "x", "."): f"held build {mirrors} -t x .",
@@ -840,7 +841,7 @@ def test_every_build_gets_the_mirrors_build_args_before_its_own(tmp_path: Path) 
 
 
 def test_builds_share_their_turn_and_one_alone_waits_for_them_and_holds_off_the_next(tmp_path: Path) -> None:
-    """PER-437: builds share the daemon; the one alone (ARH_BUILD_TURN=alone: the attempt after a
+    """PER-437: builds share the daemon; the one alone (COMMONHILL_BUILD_TURN=alone: the attempt after a
     stall) waits for those running to end, and no build starts while it waits."""
     with locked(tmp_path / "lock", fcntl.LOCK_SH):
         assert docker(tmp_path, "build", ".").wait(10) == 0, "shared with the build running"
@@ -853,12 +854,12 @@ def test_builds_share_their_turn_and_one_alone_waits_for_them_and_holds_off_the_
 
 def test_a_build_waiting_past_its_limit_fails_naming_the_builds_it_waits_for(tmp_path: Path) -> None:
     """PER-457: a turn held too long (a build that hangs) fails the builds waiting for it after
-    ARH_BUILD_TURN_WAIT_S, exit 125, saying which builds hold the turn, rather than leaving their
+    COMMONHILL_BUILD_TURN_WAIT_S, exit 125, saying which builds hold the turn, rather than leaving their
     callers to time out on a wait that only said it waited."""
     holder = docker(tmp_path, "build", "--tag", "hung", ".", turn="alone", SLEEP="60")
     try:
         assert waiting(holder)
-        late = docker(tmp_path, "build", ".", ARH_BUILD_TURN_WAIT_S="5")
+        late = docker(tmp_path, "build", ".", COMMONHILL_BUILD_TURN_WAIT_S="5")
         assert late.wait(60) == 125
         error = late.communicate()[1]
         assert "no build turn (PER-437) in " in error, error
@@ -877,7 +878,7 @@ def compose_project(
     """A compose project of one service whose build runs a step of its own (a nonce in its
     output, passed as a build arg and also written in the step, which names its cache record),
     and its name."""
-    root, name = tmp_path / "project", f"arhbuilds{uuid.uuid4().hex[:8]}"
+    root, name = tmp_path / "project", f"chbuilds{uuid.uuid4().hex[:8]}"
     root.mkdir()
     nonce = uuid.uuid4().hex
     (root / "dockerfile.job").write_text(
@@ -984,7 +985,7 @@ def test_a_compose_command_that_fetches_a_pinned_download_itself_fails(
     server, url = resets
     server.serving = True
     checksum = hashlib.sha256(server.content).hexdigest()
-    root, name = tmp_path / "project", f"arhbuilds{uuid.uuid4().hex[:8]}"
+    root, name = tmp_path / "project", f"chbuilds{uuid.uuid4().hex[:8]}"
     root.mkdir()
     (root / "dockerfile.kit").write_text(
         f"FROM {busybox_base}\nADD --checksum=sha256:{checksum} {url}/kit.tar /kit.tar\n"
@@ -1000,14 +1001,14 @@ def test_a_compose_command_that_fetches_a_pinned_download_itself_fails(
     assert server.served == 1
 
 
-def test_a_project_arh_run_builds_is_built_first_as_it_will_build_it(
+def test_a_project_hill_run_builds_is_built_first_as_it_will_build_it(
     harness: ModuleType,
     compose_built: Callable[[Path, str], None],
     compose_project: tuple[Path, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`compose_built` builds each service with `docker_build` (its watchdog and retries) as
-    `arh run` then does, Dockerfile, args and context. (Whether `arh run` then finds it in the
+    `hill run` then does, Dockerfile, args and context. (Whether `hill run` then finds it in the
     cache is CI's runner's to say: its cache went between two builds in run 42343848889.)"""
     root, name = compose_project
     builds: list[tuple[str, ...]] = []
@@ -1048,7 +1049,7 @@ def test_a_compose_build_failing_on_the_network_is_built_again_until_it_fetches(
     so nothing fetches it first. (Any later build would fetch it again: BuildKit asks for an unpinned
     URL every time, which is why the projects' downloads are pinned.)"""
     server, url = resets
-    root, name = tmp_path / "project", f"arhbuilds{uuid.uuid4().hex[:8]}"
+    root, name = tmp_path / "project", f"chbuilds{uuid.uuid4().hex[:8]}"
     root.mkdir()
     (root / "dockerfile.kit").write_text(f"FROM scratch\nADD {url}/kit.tar /kit.tar\n")
     (root / "compose.yaml").write_text(
@@ -1090,7 +1091,7 @@ REGISTRY = "registry:2@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace5288
 def registry(harness: ModuleType) -> Iterator[str]:
     """A registry of the test's own: its address."""
     harness.pulled(REGISTRY)
-    name = f"arh-test-registry-{uuid.uuid4().hex[:8]}"
+    name = f"commonhill-test-registry-{uuid.uuid4().hex[:8]}"
     subprocess.run(
         ["docker", "run", "--detach", "--rm", "--name", name, "--publish", "127.0.0.1::5000", REGISTRY],
         check=True, capture_output=True,
@@ -1120,17 +1121,17 @@ def test_a_keyed_image_comes_from_the_registry_only_for_the_same_inputs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """PER-477: a keyed image (`keyed=True`) is built and pushed to ARH_TEST_IMAGE_CACHE by the run
+    """PER-477: a keyed image (`keyed=True`) is built and pushed to COMMONHILL_TEST_IMAGE_CACHE by the run
     that first needs it, and a later run of the same inputs takes the registry's copy and builds
     nothing, whatever its tag. A change of any input under the same tag is built: a file the
     Dockerfile copies, the Dockerfile, a build arg, the image it builds on, the .dockerignore; a
     file the .dockerignore leaves out of the context is no input. An image built without the key
     never reaches the registry."""
-    monkeypatch.setenv("ARH_TEST_IMAGE_CACHE", f"{registry}/cache")
-    monkeypatch.setenv("ARH_TEST_IMAGE_CACHE_PUSH", "1")
+    monkeypatch.setenv("COMMONHILL_TEST_IMAGE_CACHE", f"{registry}/cache")
+    monkeypatch.setenv("COMMONHILL_TEST_IMAGE_CACHE_PUSH", "1")
     nonce = uuid.uuid4().hex
-    keyed, unkeyed = f"arh-test/keyed-{nonce[:12]}:1", f"arh-test/unkeyed-{nonce[:12]}:1"
-    base = f"arh-test/base-{nonce[:12]}:1"
+    keyed, unkeyed = f"commonhill-test/keyed-{nonce[:12]}:1", f"commonhill-test/unkeyed-{nonce[:12]}:1"
+    base = f"commonhill-test/base-{nonce[:12]}:1"
     subprocess.run(["docker", "tag", local_base, base], check=True, capture_output=True)
     context = tmp_path / "context"
     context.mkdir()
@@ -1170,7 +1171,7 @@ def test_a_keyed_image_comes_from_the_registry_only_for_the_same_inputs(
         build_image("--tag", unkeyed, str(context))
         with urllib.request.urlopen(f"http://{registry}/v2/_catalog") as answer:
             catalog = json.loads(answer.read())["repositories"]
-        assert f"cache/arh-test/keyed-{nonce[:12]}" in catalog, catalog
+        assert f"cache/commonhill-test/keyed-{nonce[:12]}" in catalog, catalog
         assert not any("unkeyed" in name for name in catalog), "an unkeyed image is pushed nowhere"
     finally:
         listed = subprocess.run(

@@ -31,9 +31,9 @@ guest's system calls, its clocks and its randomness among them, are insncap.c's 
      cpu_svm_check_intercept_param(env, SVM_EXIT_RDTSC, 0, GETPC());
  
 -    val = cpu_get_tsc(env) + env->tsc_offset;
-+    /* arh: a counter that advances by 1024 on every read, the same on every run. */
-+    static uint64_t arh_tsc;
-+    val = arh_tsc += 1024;
++    /* insncap: a counter that advances by 1024 on every read, the same on every run. */
++    static uint64_t insncap_tsc;
++    val = insncap_tsc += 1024;
      env->regs[R_EAX] = (uint32_t)(val);
      env->regs[R_EDX] = (uint32_t)(val >> 32);
  }
@@ -47,7 +47,7 @@ guest's system calls, its clocks and its randomness among them, are insncap.c's 
 -#elif defined CONFIG_SCHED_GETCPU
 -    return sched_getcpu();
  #else
-+    /* arh: CPU 0, the same on every run. */
++    /* insncap: CPU 0, the same on every run. */
      return 0;
  #endif
  }
@@ -69,7 +69,7 @@ guest's system calls, its clocks and its randomness among them, are insncap.c's 
      .index = -1
  };
  
-+/* arh: the last valid guest address (linux-user/main.c), for the range check below. */
++/* insncap: the last valid guest address (linux-user/main.c), for the range check below. */
 +extern unsigned long guest_addr_max;
 +
  #if defined(__linux__)
@@ -88,7 +88,7 @@ guest's system calls, its clocks and its randomness among them, are insncap.c's 
 -        ldst->oi = oi;
 -        ldst->addr_reg = addr;
 +        /*
-+         * arh: an access any byte of which lies past the guest's space goes to the slow path,
++         * insncap: an access any byte of which lies past the guest's space goes to the slow path,
 +         * whose cpu_mmu_lookup ends the process (accel/tcg/user-exec.c): the host address is
 +         * guest_base + address, unchecked, so without this a guest reaches the emulator's own
 +         * memory. The kit's -R keeps the bound within an imm32.
@@ -136,7 +136,7 @@ guest's system calls, its clocks and its randomness among them, are insncap.c's 
  void *tlb_vaddr_to_host(CPUArchState *env, vaddr addr,
                          MMUAccessType access_type, int mmu_idx)
  {
-+    /* arh: no host pointer outside the guest's space; callers take the checked slow path. */
++    /* insncap: no host pointer outside the guest's space; callers take the checked slow path. */
 +    if (!guest_addr_valid_untagged_vaddr(addr)) {
 +        return NULL;
 +    }
@@ -148,11 +148,11 @@ guest's system calls, its clocks and its randomness among them, are insncap.c's 
  /* The system-mode versions of these helpers are in cputlb.c.  */
  
 +/*
-+ * arh: a guest access outside the guest's space ends the process with status 135 at once, before
++ * insncap: a guest access outside the guest's space ends the process with status 135 at once, before
 + * it reaches the host: nothing of it lands, and the guest can't catch it (the instruction-count
 + * kit reports it as `escape`).
 + */
-+static void arh_check_range(vaddr addr, size_t size)
++static void insncap_check_range(vaddr addr, size_t size)
 +{
 +    if (unlikely(!guest_range_valid_untagged_vaddr(addr, size))) {
 +        _exit(135);
@@ -165,7 +165,7 @@ guest's system calls, its clocks and its randomness among them, are insncap.c's 
      int a_bits = memop_alignment_bits(mop);
      void *ret;
  
-+    arh_check_range(addr, memop_size(mop));
++    insncap_check_range(addr, memop_size(mop));
      /* Enforce guest required alignment.  */
      if (unlikely(addr & ((1 << a_bits) - 1))) {
          cpu_loop_exit_sigbus(cpu, addr, type, ra);
@@ -173,7 +173,7 @@ guest's system calls, its clocks and its randomness among them, are insncap.c's 
      int a_bits = memop_alignment_bits(mop);
      void *ret;
  
-+    arh_check_range(addr, size);
++    insncap_check_range(addr, size);
 +
      /* Enforce guest required alignment.  */
      if (unlikely(addr & ((1 << a_bits) - 1))) {

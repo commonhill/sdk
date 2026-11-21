@@ -147,7 +147,7 @@ static struct qemu_plugin_scoreboard *board;
 static qemu_plugin_u64 count;
 static uint64_t limit = UINT64_MAX;
 static int report_fd = -1;
-static uint64_t random_state = UINT64_C(0x6172682d696e736e); /* "arh-insn" */
+static uint64_t random_state = UINT64_C(0x6172682d696e736e); /* fixed: one stream on every run */
 static bool tree = false;   /* profile=tree */
 static char **roots;        /* its roots=, real absolute paths */
 static bool framed = false; /* frames=1 */
@@ -766,7 +766,7 @@ static int64_t uname_(uint64_t buf) {
     char u[6][65];
     memset(u, 0, sizeof u);
     strcpy(u[0], "Linux");
-    strcpy(u[1], "arh");
+    strcpy(u[1], "commonhill");
     strcpy(u[2], "6.1.0");
     strcpy(u[3], "#1 SMP");
     strcpy(u[4], "x86_64");

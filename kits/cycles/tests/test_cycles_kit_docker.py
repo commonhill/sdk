@@ -87,7 +87,7 @@ def image(
     """The kit's image, built once per session from kits/cycles/project and probe.dockerfile
     (PER-344: `build_image` fetches its pinned downloads first, and fails rather than hangs)."""
     digest = _digest(KIT)
-    tag = f"arh-cycles-probe:{digest}"
+    tag = f"commonhill-cycles-probe:{digest}"
 
     def build(path: Path) -> None:
         build_image("-f", str(KIT / "probe.dockerfile"), "-t", tag, str(KIT / "project"), keyed=True)

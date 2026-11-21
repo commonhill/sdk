@@ -55,7 +55,7 @@ MAX_QUERY_BYTES = 64 * 1024  # a request's body
 MAX_ANSWER_BYTES = 64 * 1024  # an answer's encoding
 MAX_CONNECTIONS = 32
 IDLE_TIMEOUT_S = 30.0
-TOKEN_LABEL = "arh-oracle-session"
+TOKEN_LABEL = "commonhill-oracle-session"
 MAX_LENGTH_DIGITS = 12  # a Content-Length longer than this is over any cap
 
 Answer = Callable[[Any, object], object]
@@ -208,7 +208,7 @@ class Oracle:
             raise RuntimeError("the oracle is already serving")
         server = _Server(self.address, _Handler, self)
         self._server = server
-        self._thread = threading.Thread(target=server.serve_forever, name="arh-oracle", daemon=True)
+        self._thread = threading.Thread(target=server.serve_forever, name="commonhill-oracle", daemon=True)
         self._thread.start()
         return self
 

@@ -119,8 +119,12 @@ def test_a_copy_of_another_release_than_the_one_expected_fails(tmp_path: Path) -
     root = project(tmp_path)
     vendor.copy(root)
     assert vendor.problems(root, 4, ()) == ["no grader/arh_grader (release 4 expected)"]
-    (root / "grader" / "commonhill_grader" / "__init__.py").write_text("RELEASE = 11\n")
-    assert vendor.problems(root, CURRENT, ())[0] == f"grader/commonhill_grader says release 11, not {CURRENT}"
+    later = CURRENT + 1
+    (root / "grader" / "commonhill_grader" / "__init__.py").write_text(f"RELEASE = {later}\n")
+    assert (
+        vendor.problems(root, CURRENT, ())[0]
+        == f"grader/commonhill_grader says release {later}, not {CURRENT}"
+    )
 
 
 def test_an_earlier_release_is_checked_by_its_digest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -8,14 +8,14 @@ from pathlib import Path
 
 import pytest
 
-from arh_testkit.docker import pulled
+from commonhill_testkit.docker import pulled
 
 BUSYBOX_UPSTREAM = "busybox:1.37-musl@sha256:5cec3fc171c87218698e85a52af7087de727372aae264a787b8112901a5b0092"
 # `docker load` restores tags but not registry digests, so jobs name their images by a local tag.
 # Under pytest-xdist each worker has its own (`busybox_unloaded` removes it while other workers'
 # jobs run theirs); the Docker daemon is shared.
 XDIST_WORKER = os.environ.get("PYTEST_XDIST_WORKER", "")
-BUSYBOX = f"arh-test/busybox{'-' + XDIST_WORKER if XDIST_WORKER else ''}:1.37-musl"
+BUSYBOX = f"commonhill-test/busybox{'-' + XDIST_WORKER if XDIST_WORKER else ''}:1.37-musl"
 
 
 # Two containers exchange a message over an internal network; the server writes it as the result.

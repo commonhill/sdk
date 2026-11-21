@@ -8,7 +8,7 @@ What a Commonhill project's author builds on, and vendors into the project:
 | `kits/insncap/` | The instruction-count kit: a QEMU plugin and the sandbox a speed project's grader runs the worker's program in, counting its instructions. |
 | `kits/cycles/` | The cycles kit: CodSpeed's Valgrind, patched to estimate cycles, and its sandbox. |
 | `tools/vendor.py` | Vendoring: `copy` writes the current SDK release and a project's kits into it; `check --release N [--kit KIT]... DIR` says whether DIR has exactly that release and those kits. |
-| `testkit/` | `arh-testkit`, the pytest plugin every Commonhill repository's Docker-heavy tests share: package mirrors, pinned downloads, build retries and the build turn, busybox, compose jobs, scripted workers. |
+| `testkit/` | `commonhill-testkit`, the pytest plugin every Commonhill repository's Docker-heavy tests share: package mirrors, pinned downloads, build retries and the build turn, busybox, compose jobs, scripted workers. |
 
 ## Releases
 

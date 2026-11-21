@@ -1,4 +1,4 @@
-"""arh_testkit: the Docker build harness every repository's Docker-heavy tests share, as a pytest
+"""commonhill_testkit: the Docker build harness every repository's Docker-heavy tests share, as a pytest
 plugin (it loads itself: the `pytest11` entry point). The package mirrors every build and pull goes
 through, the pinned downloads fetched before a build, the watchdog and network retries of every
 build and pull, the build turn (bin/docker, first on the tests' PATH), the tests' `docker
@@ -12,9 +12,11 @@ import pytest
 
 # pytest rewrites the asserts of a plugin's modules only when it finds them in its distribution's
 # files, which an editable install lists none of; so they are named before they are imported.
-pytest.register_assert_rewrite("arh_testkit.busybox", "arh_testkit.docker", "arh_testkit.scripted")
+pytest.register_assert_rewrite(
+    "commonhill_testkit.busybox", "commonhill_testkit.docker", "commonhill_testkit.scripted"
+)
 
-from arh_testkit.busybox import (  # noqa: E402
+from commonhill_testkit.busybox import (  # noqa: E402
     BUSYBOX,
     BUSYBOX_UPSTREAM,
     HELLO_COMPOSE,
@@ -28,7 +30,7 @@ from arh_testkit.busybox import (  # noqa: E402
     load_busybox,
     make_compose_job,
 )
-from arh_testkit.docker import (  # noqa: E402
+from commonhill_testkit.docker import (  # noqa: E402
     BUILD_OUTPUT_TAIL,
     DOCKER_TURNS_BIN,
     PinnedDownload,
@@ -53,7 +55,7 @@ from arh_testkit.docker import (  # noqa: E402
     shared_dir,
     warmed,
 )
-from arh_testkit.scripted import (  # noqa: E402
+from commonhill_testkit.scripted import (  # noqa: E402
     Script,
     ScriptedServer,
     WorkerScripts,

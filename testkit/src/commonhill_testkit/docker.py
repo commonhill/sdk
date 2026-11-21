@@ -28,20 +28,22 @@ import pytest
 # --- the mirrors every pull and build goes through (PER-304, PER-457) ---------------------------
 # In CI, the package proxy's PyPI and crates.io mirrors (.github/workflows/ci.yml), as a build VM's
 # (its cache stands between a build and the WAN: PyPI's read timeouts, cargo's "transfer too slow"
-# from static.crates.io): ARH_TEST_PIP_INDEX, a simple index, for pip (PIP_INDEX_URL and
-# PIP_TRUSTED_HOST); ARH_TEST_PYPI_FILES, PyPI's files, for the URLs in uv.lock (PYPI_FILES_MIRROR:
+# from static.crates.io): COMMONHILL_TEST_PIP_INDEX, a simple index, for pip (PIP_INDEX_URL and
+# PIP_TRUSTED_HOST); COMMONHILL_TEST_PYPI_FILES, PyPI's files, for the URLs in uv.lock (PYPI_FILES_MIRROR:
 # the services' images, whose `uv sync --frozen` takes each file from its locked URL); and
-# ARH_TEST_CARGO_MIRROR, a sparse index, for cargo (CARGO_MIRROR_URL). Each is a build arg of every
+# COMMONHILL_TEST_CARGO_MIRROR, a sparse index, for cargo (CARGO_MIRROR_URL). Each is a build arg of every
 # build a test runs (the testkit's bin/docker adds them), which a Dockerfile that declares it reads.
 # Unset: PyPI and crates.io.
-PIP_MIRROR_ENV = "ARH_TEST_PIP_INDEX"
-PYPI_FILES_ENV = "ARH_TEST_PYPI_FILES"
-CARGO_MIRROR_ENV = "ARH_TEST_CARGO_MIRROR"
+PIP_MIRROR_ENV = "COMMONHILL_TEST_PIP_INDEX"
+PYPI_FILES_ENV = "COMMONHILL_TEST_PYPI_FILES"
+CARGO_MIRROR_ENV = "COMMONHILL_TEST_CARGO_MIRROR"
 # Docker Hub through the job's own daemon's registry mirror (CI's runner pods: arc-runners'
 # docker-hub-mirror), for the Docker daemons the tests start in containers, which pull from Docker
 # Hub directly otherwise: an empty daemon's pulls met its anonymous rate limit (429, PER-457). The
 # local server's job containers get it as ARH_LOCAL_REGISTRY_MIRROR (deploy/local/compose.yaml),
-# test_dockerjob_docker's as ARH_DOCKER_REGISTRY_MIRROR (arh_controller.dockerjob).
+# test_dockerjob_docker's as ARH_DOCKER_REGISTRY_MIRROR (the controller's dockerjob). Those two are
+# the platform core's settings, so they keep its names until the core renames its own (then a
+# testkit patch release follows it).
 REGISTRY_MIRROR_ENV = "ARH_DOCKER_REGISTRY_MIRROR"
 LOCAL_REGISTRY_MIRROR_ENV = "ARH_LOCAL_REGISTRY_MIRROR"
 
@@ -106,22 +108,24 @@ def shared_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 def docker_turns() -> None:
-    """bin/docker (DOCKER_TURNS_BIN) first on PATH, the `docker` found before it as ARH_REAL_DOCKER,
+    """bin/docker (DOCKER_TURNS_BIN) first on PATH, the `docker` found before it as COMMONHILL_REAL_DOCKER,
     and the turn's lock and gate, for this process and those it starts (pytest-xdist's workers find
     them set): every build a test runs takes turns (PER-437, at BUILD_TURN_LOCK) and gets the
-    package mirrors' build args (ARH_TEST_BUILD_ARGS, `mirror_build_args`). The Docker daemons the
+    package mirrors' build args (COMMONHILL_TEST_BUILD_ARGS, `mirror_build_args`). The Docker daemons the
     tests start in containers pull through this daemon's registry mirror, if it has one
     (`registry_mirror`)."""
     real = shutil.which("docker")
-    if os.environ.get("ARH_REAL_DOCKER") or real is None:
+    if os.environ.get("COMMONHILL_REAL_DOCKER") or real is None:
         return
     if shutil.which("flock") is None:
-        raise pytest.UsageError("arh_testkit's docker (its bin/docker) needs flock (util-linux) on PATH")
+        raise pytest.UsageError(
+            "commonhill_testkit's docker (its bin/docker) needs flock (util-linux) on PATH"
+        )
     os.environ.update(
-        ARH_REAL_DOCKER=real,
-        ARH_BUILD_TURN_LOCK=str(BUILD_TURN_LOCK),
-        ARH_BUILD_TURN_GATE=str(BUILD_TURN_GATE),
-        ARH_TEST_BUILD_ARGS="\n".join(
+        COMMONHILL_REAL_DOCKER=real,
+        COMMONHILL_BUILD_TURN_LOCK=str(BUILD_TURN_LOCK),
+        COMMONHILL_BUILD_TURN_GATE=str(BUILD_TURN_GATE),
+        COMMONHILL_TEST_BUILD_ARGS="\n".join(
             f"{key}={value}" for key, value in mirror_build_args(os.environ).items()
         ),
         PATH=f"{DOCKER_TURNS_BIN}{os.pathsep}{os.environ.get('PATH', '')}",
@@ -193,24 +197,24 @@ def build_once(
 # projects' graders, or any two images with the same `apt-get` step), and kills it only once every
 # one of those builds is gone. So a stalled build killed while another build still waited on the
 # same step left the step hung, and its next attempt joined it again, replaying its lines (run
-# 42849431922: all three attempts of three tests end on the same `30.95 Get:3`); `arh run`'s
+# 42849431922: all three attempts of three tests end on the same `30.95 Get:3`); `hill run`'s
 # builds, unwatched, joined it too (run 42818995685: over 2100 s). So every build takes turns:
 # `docker` is the testkit's bin/docker on the tests' PATH (`docker_turns`), whatever runs it (the
-# tests, `arh run`, the runner, the template's stack). Builds share the daemon, but the attempt
-# after a stall (ARH_BUILD_TURN=alone) waits until every build running has ended (one may still
+# tests, `hill run`, the runner, the template's stack). Builds share the daemon, but the attempt
+# after a stall (COMMONHILL_BUILD_TURN=alone) waits until every build running has ended (one may still
 # wait on the step that stalled; its own watchdog ends it at its stall) and starts alone, so it
 # runs the step afresh. A failed step fails every build waiting on it, so the attempt after a
 # failure shares the daemon. Only a command that builds takes a turn: a compose `run` or `up`
-# whose images are all there runs at once (PER-457: `arh run`'s paired runs and `run --rm ... cat`
+# whose images are all there runs at once (PER-457: `hill run`'s paired runs and `run --rm ... cat`
 # waited 20 minutes behind builds and a retry waiting to go alone), and a wait for a turn past
-# ARH_BUILD_TURN_WAIT_S fails naming the builds that hold it (bin/docker).
+# COMMONHILL_BUILD_TURN_WAIT_S fails naming the builds that hold it (bin/docker).
 BUILD_STALL_S = 600
 BUILD_DEADLINE_S = 3600
 BUILD_OUTPUT_TAIL = 8000  # characters of a failed build's output in its error
 BUILD_ATTEMPTS = 3
 BUILD_RETRY_WAITS_S = (60, 120)  # before the 2nd attempt, before the 3rd
-BUILD_TURN_LOCK = Path(tempfile.gettempdir()) / "arh-test-docker-builds.lock"
-BUILD_TURN_GATE = Path(tempfile.gettempdir()) / "arh-test-docker-builds.gate"
+BUILD_TURN_LOCK = Path(tempfile.gettempdir()) / "commonhill-test-docker-builds.lock"
+BUILD_TURN_GATE = Path(tempfile.gettempdir()) / "commonhill-test-docker-builds.gate"
 # The testkit's `docker` (bin/docker), beside src/ in its source tree: the package is installed
 # editable from it (a uv workspace member), not as a wheel, which has no bin/.
 DOCKER_TURNS_BIN = Path(__file__).resolve().parents[2] / "bin"
@@ -374,7 +378,7 @@ def built(argv: list[str], cwd: Path | None) -> str:
     """`argv`, a build (`docker build` or `docker compose build`, plain progress), its output; an
     AssertionError with the output's end if it fails, prints nothing for BUILD_STALL_S, or runs
     past BUILD_DEADLINE_S (it is killed then). A failure on a network error (`network_failure`) is
-    built again, up to BUILD_ATTEMPTS times: alone after a stall (ARH_BUILD_TURN, above)."""
+    built again, up to BUILD_ATTEMPTS times: alone after a stall (COMMONHILL_BUILD_TURN, above)."""
     attempt, env = 1, None
     while True:
         output, why, code = watched(argv, cwd, BUILD_STALL_S, BUILD_DEADLINE_S, env)
@@ -388,7 +392,7 @@ def built(argv: list[str], cwd: Path | None) -> str:
             tail = output[-BUILD_OUTPUT_TAIL:]
             raise AssertionError(f"{' '.join(argv[:6])}: {what}; its output's end:\n{tail}")
         retry_wait(BUILD_RETRY_WAITS_S[attempt - 1], reason)
-        attempt, env = attempt + 1, {**os.environ, "ARH_BUILD_TURN": "alone"} if why else None
+        attempt, env = attempt + 1, {**os.environ, "COMMONHILL_BUILD_TURN": "alone"} if why else None
 
 
 def docker_build(*args: str, cwd: Path | None = None) -> str:
@@ -412,7 +416,7 @@ def docker_build(*args: str, cwd: Path | None = None) -> str:
 PULL_ATTEMPTS = 4
 PULL_RETRY_WAITS_S = (15, 60, 180)  # before the 2nd attempt, the 3rd, the 4th
 PULL_TIMEOUT_S = 900
-PULLS_DIR = Path(tempfile.gettempdir()) / "arh-test-pulls"  # the pulls' locks
+PULLS_DIR = Path(tempfile.gettempdir()) / "commonhill-test-pulls"  # the pulls' locks
 FROM_LINE = re.compile(r"^FROM\s+(?:--\S+\s+)*(\S+)(?:\s+AS\s+(\S+))?\s*$", re.IGNORECASE)
 COPY_FROM = re.compile(r"^COPY\s+(?:--\S+\s+)*?--from=(\S+)", re.IGNORECASE)
 
@@ -764,9 +768,9 @@ def compose(tmp_path_factory: pytest.TempPathFactory) -> Callable[..., str]:
 
 @pytest.fixture(scope="session")
 def compose_built(tmp_path_factory: pytest.TempPathFactory) -> Callable[[Path, str], None]:
-    """`compose_built(root, project)`, for a test whose project `arh run` builds from its compose
+    """`compose_built(root, project)`, for a test whose project `hill run` builds from its compose
     config with `docker build`: each of its builds done first by `docker_build` (its watchdog and
-    retries), so `arh run` finds them in the cache."""
+    retries), so `hill run` finds them in the cache."""
 
     def prebuild(root: Path, project: str) -> None:
         builds = compose_builds(root, project)
@@ -791,11 +795,11 @@ def dockerfile_of(args: tuple[str, ...], cwd: Path | None) -> Path:
 
 # CI's registry copies of the tests' images (PER-477): `build_image(..., keyed=True)` names an image
 # by a digest of everything its build reads (`build_key`), which is the same in every run that has
-# those inputs, so a run takes it from ARH_TEST_IMAGE_CACHE (a repository prefix) when it is there,
-# instead of building it on its job's empty Docker daemon (a kit's took 3 to 12 minutes); a run
-# with ARH_TEST_IMAGE_CACHE_PUSH (CI's) pushes what it built. Without ARH_TEST_IMAGE_CACHE, every
-# image is built. The key is what BuildKit's own cache keys on: a RUN's network fetches aren't in
-# it, as a warm daemon would reuse that layer too.
+# those inputs, so a run takes it from COMMONHILL_TEST_IMAGE_CACHE (a repository prefix) when it is
+# there, instead of building it on its job's empty Docker daemon (a kit's took 3 to 12 minutes); a
+# run with COMMONHILL_TEST_IMAGE_CACHE_PUSH (CI's) pushes what it built. Without
+# COMMONHILL_TEST_IMAGE_CACHE, every image is built. The key is what BuildKit's own cache keys on: a
+# RUN's network fetches aren't in it, as a warm daemon would reuse that layer too.
 IMAGE_CACHE_PULL_TIMEOUT_S = 300
 CONTEXT_DOCKERFILE = "FROM scratch\nCOPY . /\n"  # the context as Docker sends a build, as files
 
@@ -836,7 +840,7 @@ def build_key(args: tuple[str, ...], cwd: Path | None) -> str | None:
     """A digest of everything `docker build *args` (in `cwd`) reads: its Dockerfile's text, the ID
     of every image it builds on (pulled first, as `docker_build` would), its context as Docker
     sends it (`context_digest`), every other argument but the tag (build args, target) and the
-    tests' own build args (ARH_TEST_BUILD_ARGS). None if a base image is named by a build arg,
+    tests' own build args (COMMONHILL_TEST_BUILD_ARGS). None if a base image is named by a build arg,
     which the key can't follow."""
     dockerfile = dockerfile_of(args, cwd)
     text = dockerfile.read_text()
@@ -859,7 +863,7 @@ def build_key(args: tuple[str, ...], cwd: Path | None) -> str | None:
             skip = True
         elif not arg.startswith(("--tag=", "--file=")):
             rest.append(arg)
-    rest.append(os.environ.get("ARH_TEST_BUILD_ARGS", ""))
+    rest.append(os.environ.get("COMMONHILL_TEST_BUILD_ARGS", ""))
     digest.update(json.dumps(rest).encode())
     return digest.hexdigest()[:32]
 
@@ -867,7 +871,7 @@ def build_key(args: tuple[str, ...], cwd: Path | None) -> str | None:
 def cached_name(tag: str, key: str) -> str:
     """The registry's copy of the image tagged `tag` built from inputs of digest `key`."""
     repository = tag.rpartition(":")[0] if ":" in tag.rpartition("/")[2] else tag
-    return f"{os.environ['ARH_TEST_IMAGE_CACHE']}/{repository}:{key}"
+    return f"{os.environ['COMMONHILL_TEST_IMAGE_CACHE']}/{repository}:{key}"
 
 
 def from_image_cache(tag: str, key: str) -> bool:
@@ -891,8 +895,8 @@ def from_image_cache(tag: str, key: str) -> bool:
 
 def to_image_cache(tag: str, key: str) -> None:
     """Push the built `tag` as the registry's copy of `key`'s build, in a run that pushes
-    (`ARH_TEST_IMAGE_CACHE_PUSH`); a failed push only leaves the next run to build it."""
-    if not os.environ.get("ARH_TEST_IMAGE_CACHE_PUSH"):
+    (`COMMONHILL_TEST_IMAGE_CACHE_PUSH`); a failed push only leaves the next run to build it."""
+    if not os.environ.get("COMMONHILL_TEST_IMAGE_CACHE_PUSH"):
         return
     remote = cached_name(tag, key)
     subprocess.run(["docker", "tag", tag, remote], check=True, capture_output=True)
@@ -908,13 +912,13 @@ def to_image_cache(tag: str, key: str) -> None:
 @pytest.fixture(scope="session")
 def build_image(tmp_path_factory: pytest.TempPathFactory) -> Callable[..., str]:
     """`docker_build(*args, cwd=...)`, for the tests' own image fixtures, the Dockerfile's pinned
-    downloads warmed first (`warmed`). `keyed=True`, with ARH_TEST_IMAGE_CACHE: the registry's copy
+    downloads warmed first (`warmed`). `keyed=True`, with COMMONHILL_TEST_IMAGE_CACHE: the registry's copy
     of a build of the same inputs (`build_key`) stands in for it (`from_image_cache`), and its
     output is then the copy's name."""
 
     def build(*args: str, cwd: Path | None = None, keyed: bool = False) -> str:
         tag = tag_of(args) if keyed else ""
-        key = build_key(args, cwd) if keyed and os.environ.get("ARH_TEST_IMAGE_CACHE") else None
+        key = build_key(args, cwd) if keyed and os.environ.get("COMMONHILL_TEST_IMAGE_CACHE") else None
         if key and from_image_cache(tag, key):
             return f"image cache: {tag}"
         warmed(tmp_path_factory, dockerfile_of(args, cwd))

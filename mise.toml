@@ -15,4 +15,4 @@ run = "uv run pyright"
 
 [tasks.test]
 description = "Every test: the grader SDK's, the kits' (their Docker tests build the kits' probe images), the testkit's and the vendoring tool's"
-run = 'uv run pytest --numprocesses "${ARH_TEST_WORKERS:-8}" --durations=20'
+run = 'uv run pytest --numprocesses "${COMMONHILL_TEST_WORKERS:-8}" --durations=20'

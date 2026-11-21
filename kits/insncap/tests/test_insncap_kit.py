@@ -138,7 +138,7 @@ def test_the_patch_checks_every_access_before_it_lands() -> None:
         "accel/tcg/user-exec.c",
     ]
     assert "+            jcc = tcg_out_cmp(s, TCG_COND_GTU, addr, last, true, P_REXW);" in patch
-    assert patch.count("+    arh_check_range(addr,") == 2  # cpu_mmu_lookup and atomic_mmu_lookup
+    assert patch.count("+    insncap_check_range(addr,") == 2  # cpu_mmu_lookup and atomic_mmu_lookup
     assert "+        _exit(135);" in patch
     assert str(SANDBOX.EXIT_ESCAPE) == "135"
 

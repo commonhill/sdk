@@ -63,6 +63,13 @@ What each release added:
   10 s), and must be UTF-8 JSON of at most 1 million values per item and 4 million in all
   (`MAX_VALUES_PER_OUTPUT`, `MAX_VALUES`), counted before it is decoded: 64 MiB of `[]` would
   decode to about 1.4 GB.
+- **Release 11:** the platform's old name is gone from what a project vendors. Local runs use the
+  public seed `commonhill-public-seed-v1` (on the platform `AR_SEED` replaces it, so only local
+  runs' numbers change). The oracle's session tokens are keyed `commonhill-oracle-session` (the
+  grader makes and checks them; the worker only echoes them). The kits' sources say Commonhill,
+  and the instruction-count kit's guest sees the host name `commonhill` in `uname`. The tests'
+  harness is `commonhill_testkit` (distribution `commonhill-testkit`), its variables
+  `COMMONHILL_*`.
 
 ## A grader in brief
 
@@ -233,7 +240,7 @@ written first, to `items.json` beside the result (`{"schema": 1, "item_scores": 
 1 MiB).
 
 - A held-out project's deterministic metric needs them: its MMI floor is twice the held-out set's
-  sampling error, a bootstrap over them (the platform's noise profile, `arh_core.noise`). Without
+  sampling error, a bootstrap over them (the platform's noise profile). Without
   them its profile fails. An open project's needs none: its items are the target, not a sample.
 - Write them on every run: only a noise profile's runs read the file, so result.json stays small
   however many items there are (a verification reads at most 64 KiB of it).
@@ -399,7 +406,7 @@ calls = [s.calls for s in sessions]
 - **Held-out safety:** the oracle prints nothing, and its error bodies are fixed. Report counts
   only.
 - **Intake:** `compose.yaml` must give the worker exactly `AR_ORACLE_URL=http://grader:8081`
-  (`arh_spec.oracle`).
+  (the platform checks it when it takes the project in).
 
 ## Examples
 

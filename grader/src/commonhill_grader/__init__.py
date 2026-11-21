@@ -69,7 +69,7 @@ from commonhill_grader.view import (
     write_view,
 )
 
-RELEASE = 10
+RELEASE = 11
 
 __all__ = [
     "DEADLINE_ENV",

@@ -14,7 +14,7 @@ import os
 import random
 
 SEED_ENV = "AR_SEED"
-PUBLIC_SEED = "arh-public-seed-v1"
+PUBLIC_SEED = "commonhill-public-seed-v1"
 
 
 def seed() -> str:

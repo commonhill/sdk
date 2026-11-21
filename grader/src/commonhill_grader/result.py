@@ -33,7 +33,7 @@ Per-item scores (since the SDK's release 2) go in a file of their own beside it,
 `/result/items.json` (`{"schema": 1, "item_scores": [1, 0, 1, ...]}`, one per item, up to
 `MAX_ITEMS_BYTES`): each held-out item's contribution to the primary value, which must be their
 mean (`check_items`). A deterministic metric's noise profile bootstraps over them for its MMI floor
-(the platform's `arh_core.noise`). A grader writes them on every run, the same whatever the run is
+(the platform's noise profile). A grader writes them on every run, the same whatever the run is
 for: only a noise profile's runs read them (the platform's runner, `items_cap_bytes`), so a large
 held-out set's scores never weigh on result.json, which a verification caps at 64 KiB. They are
 held-out data: the platform keeps only their standard error, never the scores; they are never
@@ -63,10 +63,10 @@ FAILURE_KINDS = "failure_kinds"
 FAILURE_KIND = re.compile(r"[a-z0-9_.-]{1,40}")
 MAX_FAILURE_KINDS = 32
 RESULT_PATH = Path("/result/result.json")
-# The runner reads at most this much of result.json (arh_runner.protocol.MAX_RESULT_BYTES).
+# The platform's runner reads at most this much of result.json.
 MAX_RESULT_BYTES = 1024 * 1024
 ITEMS_FILE = "items.json"  # beside result.json
-# The most a noise profile's runs read of items.json (arh_runner.protocol.MAX_ITEMS_BYTES).
+# The most a noise profile's runs read of items.json (the platform's runner).
 MAX_ITEMS_BYTES = 1024 * 1024
 # The most any count in a result may be: the platform keeps them as 32-bit integers
 # (verification_runs.failures), so a larger one is an invalid result, not a failed ingest.

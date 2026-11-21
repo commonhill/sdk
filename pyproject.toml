@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # The sdk's workspace: the grader SDK (grader/, package commonhill-grader) and the tests' Docker build
-# harness (testkit/, arh-testkit). The kits (kits/) and the vendoring tool (tools/) are files a
+# harness (testkit/, commonhill-testkit). The kits (kits/) and the vendoring tool (tools/) are files a
 # project vendors or runs, not packages.
 [project]
 name = "commonhill-sdk"
@@ -12,7 +12,7 @@ requires-python = ">=3.13"
 [dependency-groups]
 dev = [
     "commonhill-grader",
-    "arh-testkit",  # the Docker build harness the tests share, a pytest plugin (testkit/)
+    "commonhill-testkit",  # the Docker build harness the tests share, a pytest plugin (testkit/)
     "pyright[nodejs]>=1.1.414",
     "pytest>=9.1",
     "pytest-timeout>=2.4",  # a hung test fails with every thread's stack
@@ -28,7 +28,7 @@ members = ["grader", "testkit"]
 
 [tool.uv.sources]
 commonhill-grader = { workspace = true }
-arh-testkit = { workspace = true }
+commonhill-testkit = { workspace = true }
 
 [tool.ruff]
 line-length = 110

@@ -1056,7 +1056,7 @@ index 000000000..93c2a1c03
 +static Int   report_fd = -1;
 +static void  (*item_hook)(void) = NULL;
 +static ULong clock_reads = 0;
-+static ULong random_state = 0x6172682d696e736eULL; /* "arh-insn" */
++static ULong random_state = 0x6172682d696e736eULL; /* fixed: one stream on every run */
 +static ULong frame_left = 0;   /* bytes of the current frame not yet read */
 +static Bool  frames_ended = False;
 +
