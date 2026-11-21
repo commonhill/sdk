@@ -64,12 +64,12 @@ What each release added:
   (`MAX_VALUES_PER_OUTPUT`, `MAX_VALUES`), counted before it is decoded: 64 MiB of `[]` would
   decode to about 1.4 GB.
 - **Release 11:** the platform's old name is gone from what a project vendors. Local runs use the
-  public seed `commonhill-public-seed-v1` (on the platform `AR_SEED` replaces it, so only local
-  runs' numbers change). The oracle's session tokens are keyed `commonhill-oracle-session` (the
-  grader makes and checks them; the worker only echoes them). The kits' sources say Commonhill,
-  and the instruction-count kit's guest sees the host name `commonhill` in `uname`. The tests'
-  harness is `commonhill_testkit` (distribution `commonhill-testkit`), its variables
-  `COMMONHILL_*`.
+  public seed `commonhill-public-seed-v1`, and so do the platform's view runs (they draw a
+  project's pages, not its scores); a measured run's `AR_SEED` replaces it, so scores don't move.
+  The oracle's session tokens are keyed `commonhill-oracle-session` (the grader makes and checks
+  them; the worker only echoes them). The kits' sources say Commonhill, and the instruction-count
+  kit's guest sees the host name `commonhill` in `uname`. The tests' harness is
+  `commonhill_testkit` (distribution `commonhill-testkit`), its variables `COMMONHILL_*`.
 
 ## A grader in brief
 
