@@ -18,7 +18,7 @@ It is the successor to the instruction-count kit (`kits/insncap`). An instructio
 
 ## The engine
 
-[valgrind-codspeed](https://github.com/CodSpeedHQ/valgrind-codspeed) is CodSpeed's fork of Valgrind 3.26 (GPL-3.0-or-later), pinned at release `3.26.0-0codspeed13` (commit `346abce5`), with its Capstone submodule (commit `02257584`). CodSpeed's own callgrind decodes each instruction with Capstone and looks it up in a generated table of Zen 4 latency and reciprocal throughput (`callgrind/x86_caps_lut.inc`). The patch compiles that decoder and table into Cachegrind, because Cachegrind simulates the same caches about 3 times faster than callgrind (callgrind spends the difference on its call graph), and changes one thing in them: how x87 is priced (below).
+[valgrind-codspeed](https://github.com/CodSpeedHQ/valgrind-codspeed) is CodSpeed's fork of Valgrind 3.26 (GPL-3.0-or-later), pinned at release `3.26.0-0codspeed13` (commit `346abce5`), with its Capstone submodule (commit `02257584`). CodSpeed's own callgrind decodes each instruction with Capstone and looks it up in a generated table of Zen 4 latency and reciprocal throughput (`callgrind/x86_caps_lut.inc`). The patch compiles that decoder and table into Cachegrind, because Cachegrind simulates the same caches about 3 times faster than callgrind (callgrind spends the difference on its call graph). The patch changes one thing in them: how x87 is priced (below).
 
 A project's `dockerfile.grader` builds it the way `probe.dockerfile` does, step for step (so the two share Docker's cache):
 
@@ -28,7 +28,7 @@ A project's `dockerfile.grader` builds it the way `probe.dockerfile` does, step 
 
 ### x87
 
-Every x87 row in the table is its default, 100/100 centi-cycles (one cycle), whatever the instruction (`FXSAVE` aside); why isn't published, as its generator isn't. So `FDIV` cost an eighth of `DIVSD` (500/1300), `FSQRT` a thirteenth of `SQRTSD` (840/2100), `FILD` a fraction of `CVTSI2SD` (147/800), `FSIN` the same as a `MOV`. A program that did its divisions, roots, conversions or transcendentals in x87 (with the precision control at double, `FDIV` and `FSQRT` round exactly as `DIVSD` and `SQRTSD` do) wrote the same bytes for far fewer estimated cycles (PER-492). Since release 9 the patch (`callgrind/cycledecode.c`, `x87_row`) prices:
+Every x87 row in the table is its default, 100/100 centi-cycles (one cycle), whatever the instruction (`FXSAVE` aside). The reason is not published, because the table's generator is not. So `FDIV` cost an eighth of `DIVSD` (500/1300), `FSQRT` a thirteenth of `SQRTSD` (840/2100), `FILD` a fraction of `CVTSI2SD` (147/800), `FSIN` the same as a `MOV`. A program that did its divisions, roots, conversions or transcendentals in x87 (with the precision control at double, `FDIV` and `FSQRT` round exactly as `DIVSD` and `SQRTSD` do) wrote the same bytes for far fewer estimated cycles (PER-492). Since release 9 the patch (`callgrind/cycledecode.c`, `x87_row`) prices:
 
 - **x87 arithmetic and conversions at their SSE2 twin's row,** the same work on a double: `FADD`, `FSUB(R)(P)`, `FIADD` and `FISUB(R)` as `ADDSD`/`SUBSD`, `FMUL(P)` and `FIMUL` as `MULSD`, `FDIV(R)(P)` and `FIDIV(R)` as `DIVSD`, `FSQRT` as `SQRTSD`, `FRNDINT` as `ROUNDSD`, `FILD` as `CVTSI2SD`, `FIST(P)` as `CVTSD2SI` and `FISTTP` as `CVTTSD2SI`;
 - **the rest that compute at a measured cost,** which have no twin: `FSIN`, `FCOS`, `FSINCOS`, `FPTAN`, `FPATAN`, `F2XM1`, `FYL2X`, `FYL2XP1`, `FPREM`, `FPREM1`, `FSCALE`, `FXTRACT`, `FBLD` and `FBSTP`. No Zen 4 measurement of them is published under a licence the kit can use (LLVM's Zen 4 model gives them a 100-cycle placeholder; uops.info lists them as microcode, without numbers), so the costs are Commonhill's own, **measured on Zen 3** (a Ryzen 5 5600X), by `x87/measure.py`: reciprocal throughput and latency in whole cycles, each at one mid-range argument (`FSIN` 38/156 at 1.5; their latency varies with the argument). Its docstring has them all and how to measure them again;
@@ -55,7 +55,7 @@ Mispredicted branches (Valgrind's simple predictor) are reported, not scored.
 
 ## The cap
 
-`cap` is in estimated cycles. A run whose estimate is over it gets an `over` line after the run, deterministically. While it runs, the patch ends it once it has run `INSTRUCTIONS_PER_CYCLE` (8) instructions for each estimated cycle of its cap (exit 137, `over`), so a program that never ends is stopped too. Real programs run about one instruction an estimated cycle, far below eight, so in practice the running cap ends only runs that are over their cap anyway.
+`cap` is in estimated cycles. A run whose estimate is over it gets an `over` line after the run, deterministically. While the program runs, the patch ends it once it has run `INSTRUCTIONS_PER_CYCLE` (8) instructions for each estimated cycle of its cap (exit 137, `over`), so a program that never ends is stopped too. Real programs run about one instruction an estimated cycle, far below eight, so in practice the running cap ends only runs that are over their cap anyway.
 
 ## Memory
 
@@ -69,7 +69,7 @@ Report it as a side metric and guard it against the incumbent (`[[guards]]`), or
 
 `parse_report(outcome.report)` gives a `Report`:
 
-- `totals`: the counts at the program's end (`Counts`; None if Valgrind ended it: over the running cap, a second thread, an escape); `cycles` is the score. A program a signal killed has its counts up to then, but no memory pass, and its exit is minus the signal;
+- `totals`: the counts at the program's end (`Counts`; None if Valgrind ended it: over the running cap, a second thread, an escape); `cycles` is the score. A program that a signal killed has its counts up to then, but no memory pass, and its exit status is the negative of the signal number;
 - `items`: the counts at each item's start (framed runs), and `item_counts()` each item's own;
 - `peak_memory_bytes` (None if the memory pass didn't run);
 - `over`, `thread`, `escape`;
@@ -84,7 +84,7 @@ Everything the program can observe is the same on every run and under both tools
 - **CPUID** is Valgrind's fixed model (a Haswell i7-4910MQ: AVX2, BMI, FMA, F16C, RDRAND, no AVX-512, which Valgrind doesn't have), so runtime dispatch takes the same path everywhere. Valgrind picks that model, and which instructions it decodes, from the host's features; the patch pins them to Haswell's set, hiding newer ones (RDSEED), and a host without one of them can't run the kit (`m_machine.c`). The cost table is Zen 4's: the code paths are fixed by one model and the costs by another, both fixed.
 - **Time** (clock_gettime, gettimeofday, time, clock_getres) moves on by a microsecond a read, the realtime clocks from 2026-01-01T00:00:00Z; sleeping returns at once; the time-stamp counter steps by 1024 a read and TSC_AUX is 0.
 - **Randomness:** getrandom from a fixed seed, and `--deterministic-rng` (the fork's) for AT_RANDOM and RDRAND.
-- **The program's start:** argv is the one name `program`, the environment is empty, and the auxiliary vector is a fixed one (`initimg-linux.c`: the executable's own entries, page size 4096, ids 1000, AT_HWCAP the CPUID model's, AT_RANDOM's bytes from the fixed seed, platform `x86_64`), not a copy of the host kernel's, whose entries and values follow its version, the CPU and the account.
+- **The program's start:** argv is the one name `program`, the environment is empty, and the auxiliary vector is fixed (`initimg-linux.c`: the executable's own entries, page size 4096, ids 1000, AT_HWCAP the CPUID model's, AT_RANDOM's bytes from the fixed seed, platform `x86_64`). It is not a copy of the host kernel's, whose entries and values follow its version, the CPU and the account.
 - **The layout:** Valgrind places the program's memory itself: the image, then the brk segment, then its mappings, from the bottom of its space, and its stack at the top. The fork fixes the startup stack's layout whatever the arguments and environment, and the patch sizes the stack and the brk segment at 8 MiB each, not from the host's RLIMIT_STACK and RLIMIT_DATA. Cache misses follow addresses, so these are what make the misses, and the estimate, the same on every host.
 - **The program itself:** the estimate is of these bytes. Code and data that lie elsewhere miss differently, with the same instructions: a build that embeds its paths (Rust's panic locations name cargo's registry directory, whose name follows the crates.io mirror the build used) gives a different estimate. A project's build makes the same bytes on the platform, in CI and on an author's machine (AUTHOR.md, "Speed, counted").
 - **Threads:** a second thread ends the run (exit 136, `thread`). Valgrind runs threads one after another, so a parallel speedup wouldn't show anyway.
@@ -151,7 +151,7 @@ What it says:
 
 - **Where a change trades instructions for memory traffic or for dearer instructions, only the full estimate gets the direction right:** 6 of the 7 synthetic pairs against 2 for the plain count. It misses the branchy/branchless pair, as expected: mispredictions aren't priced.
 - **The real changes here are instruction-bound,** so all three metrics pick all 6 measurable ones right and rank them almost alike; the estimate's lead there is one fewer discordant pair. They show the estimate costs nothing where counts already work.
-- **Magnitudes are rougher than directions:** a `div` costs far more on Haswell than the Zen 4 table says (the Zen 3 desktop is close to it), and streaming access the hardware prefetches is overpriced. That is why the synthetic pairs' ρ is low while their picks are right.
+- **Magnitudes are rougher than directions:** a `div` costs far more on Haswell than the Zen 4 table says (the Zen 3 desktop is close to it), and streaming access that the hardware prefetches is overpriced. That is why the synthetic pairs' ρ is low while their picks are right.
 - **The miss costs barely matter:** over L1 10, 20 or 40 and last level 100, 200 or 300, ρ stays 0.69 to 0.71 and the picks 12 of 13.
 
 ## Limits

@@ -1,9 +1,14 @@
 # commonhill-testkit: the tests' Docker build harness
 
-A pytest plugin with the Docker build harness every repository's Docker-heavy tests share: the
-package mirrors every build and pull goes through, the pinned downloads fetched before a build, the
-watchdog and network retries of every build and pull, the build turn, busybox and the compose jobs
-on it, and scripted HTTP workers.
+A pytest plugin that holds the Docker build harness every repository's Docker-heavy tests share. It
+covers:
+
+- the package mirrors that every build and pull goes through
+- the pinned downloads fetched before a build
+- the watchdog and network retries of every build and pull
+- the build turn
+- busybox and the compose jobs on it
+- scripted HTTP workers
 
 ## Use
 
@@ -24,7 +29,7 @@ beside `src/`: install it editable (a workspace member, or `uv add --editable`),
 ## Fixtures
 
 - `build_image(*args, cwd=None, keyed=False)`: `docker build`, its pinned downloads warmed and its
-  base images pulled first; `keyed=True` takes the registry's copy of a build of the same inputs.
+  base images pulled first; `keyed=True` takes the registry's copy of a build with the same inputs.
 - `docker_compose(root, project, *args, run_s=...)`, `compose(...)` (its output): `docker compose`,
   its project built first under the watchdog; a command that still builds fails.
 - `compose_built(root, project)`: a compose project's builds done by `docker_build` first.
@@ -49,13 +54,13 @@ Importable from `commonhill_testkit`: `docker_build`, `built`, `pulled`, `base_i
 ## Environment
 
 - `COMMONHILL_TEST_PIP_INDEX`, `COMMONHILL_TEST_PYPI_FILES`, `COMMONHILL_TEST_CARGO_MIRROR`: the
-  package mirrors, as every build's args `PIP_INDEX_URL` and `PIP_TRUSTED_HOST`,
-  `PYPI_FILES_MIRROR`, `CARGO_MIRROR_URL`.
+  package mirrors, passed to every build as the args `PIP_INDEX_URL` and `PIP_TRUSTED_HOST`,
+  `PYPI_FILES_MIRROR` and `CARGO_MIRROR_URL`.
 - `ARH_DOCKER_REGISTRY_MIRROR`: Docker Hub's mirror for the Docker daemons tests start; the
   daemon's own first mirror if unset (set as `ARH_LOCAL_REGISTRY_MIRROR` too). These two are the
   platform core's settings and keep its names until the core renames them.
-- `COMMONHILL_TEST_IMAGE_CACHE`, `COMMONHILL_TEST_IMAGE_CACHE_PUSH`: the registry repository keyed
-  images are taken from, and whether a run pushes what it built.
+- `COMMONHILL_TEST_IMAGE_CACHE`, `COMMONHILL_TEST_IMAGE_CACHE_PUSH`: the registry repository that
+  keyed images are taken from, and whether a run pushes what it built.
 - `PYTEST_XDIST_WORKER`: the worker's busybox tag and session directory.
 - Set by the plugin for the processes it starts: `COMMONHILL_REAL_DOCKER`,
   `COMMONHILL_BUILD_TURN_LOCK`, `COMMONHILL_BUILD_TURN_GATE`, `COMMONHILL_TEST_BUILD_ARGS`. Read by

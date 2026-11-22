@@ -35,7 +35,7 @@ oxipng's `dockerfile.grader` and its README ("How a run is scored") are the work
 
 **The program's memory:** in user-mode emulation a guest address becomes `guest_base + address`, and QEMU checks it only where it chooses to. So a program that can make an arbitrary pointer could otherwise read or write the emulator's own memory, where the count is. That includes C, unsafe Rust, and Python through ctypes or numpy. The kit's guest space is QEMU's reserved one (`-R 0x80000000`, `GUEST_SPACE` in insncap.c), and the emulator checks every guest access against it *before* the access happens (`qemu.patch`, part 3). An access outside it ends the process with status 135 at once, and nothing of it lands. The program can't catch it. `sandbox.py` reports it as `escape`.
 
-A project needs no language rule of its own for this, though one (oxipng's safe Rust) does no harm. Counts don't change. The check is two host instructions per access, cheaper than the plugin callback on every store it replaces.
+A project needs no language rule of its own for this, though one (oxipng's safe Rust) does no harm. Counts don't change. The check costs two host instructions per access, which is cheaper than the plugin callback it replaces on every store.
 
 Every place in QEMU 11.1.2's user-mode x86-64 emulator that turns a guest address into a host one (`g2h` and its variants), with what covers it:
 
@@ -45,7 +45,7 @@ Every place in QEMU 11.1.2's user-mode x86-64 emulator that turns a guest addres
 | `accel/tcg/user-exec.c`, `cpu_mmu_lookup` | the slow path (`helper_ld*_mmu`, `helper_st*_mmu`) and every helper's access through `cpu_ld*`, `cpu_st*` | the patch: range check, exit 135 |
 | `user-exec.c`, `atomic_mmu_lookup` | atomics: `cmpxchg`, `cmpxchg16b`, locked read-modify-writes | the patch: range check, exit 135 |
 | `user-exec.c`, `tlb_vaddr_to_host` | a host pointer for a helper (no x86 user) | the patch: NULL outside the range, so callers take the checked path |
-| `user-exec.c`, `probe_access*`, `get_page_addr_code_hostp` | instruction fetch, and helpers that probe a range and then use the host pointer (fxsave, xsave and their restores) | QEMU's own: `guest_addr_valid` on the start, and a probe stays within one page, whose end the space's (page-aligned) end can't fall inside; else a SIGSEGV the guest may catch, before any access |
+| `user-exec.c`, `probe_access*`, `get_page_addr_code_hostp` | instruction fetch, and helpers that probe a range and then use the host pointer (fxsave, xsave and their restores) | QEMU's own: `guest_addr_valid` on the start, and a probe stays within one page, and the space's end (page-aligned) cannot fall inside that page; otherwise a SIGSEGV the guest may catch, before any access |
 | `user-exec.c`, `cpu_memory_rw_debug` | the plugin's `qemu_plugin_read_memory_vaddr` and `_write_` (clocks, getrandom, stat, paths) | QEMU's own: page flags, and there are no pages outside the range |
 | `linux-user/uaccess.c`, `lock_user` | every system call's buffers and structures: read, write, readv, writev, rt_sigaction, sigaltstack, prlimit64, the signal frame | QEMU's own: `access_ok` (`guest_range_valid`, `page_check_range`) |
 | `linux-user/mmap.c` | mmap, munmap, mprotect, mremap, madvise | QEMU's own: `guest_range_valid` before any `g2h` |

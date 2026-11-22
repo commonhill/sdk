@@ -1,8 +1,8 @@
 # commonhill-grader: the grader SDK
 
-The Python package project authors use to write a grader. A grader measures the worker over the
-evaluation items, treats everything the worker sends as hostile, and writes `/result/result.json`,
-the only thing the platform reads. Standard library only (Python 3.12+).
+The Python package that project authors use to write a grader. A grader measures the worker over
+the evaluation items, treats everything the worker sends as hostile, and writes
+`/result/result.json`, the only thing the platform reads. Standard library only (Python 3.12+).
 
 ```sh
 uv add commonhill-grader          # in a uv project, from this repository: uv add ./grader
@@ -10,9 +10,9 @@ uv add commonhill-grader          # in a uv project, from this repository: uv ad
 
 Each project template (commonhill/templates) vendors a copy in its `grader/commonhill_grader`, and so
 does each project, so a grader image builds without network. Authors get the current release with
-a template: `hill new` writes out a template the served CLI wheel carries. The guide
-(`/api/guide.md` on the platform) documents the SDK, `items.json` included, so the guide changes
-with the SDK.
+a template: `hill new` writes out a template that comes with the CLI wheel the platform serves. The
+guide (`/api/guide.md` on the platform) documents the SDK, `items.json` included, so the guide
+changes with the SDK.
 
 ### Releases
 
@@ -44,8 +44,8 @@ What each release added:
 - **Release 5:** the oracle: an endpoint the worker calls and the grader counts (`Oracle`,
   `Session`, `sessions=` on `Client.run` and `Client.evaluate`, the failure kind `oracle_cap`;
   "The oracle").
-- **Release 6:** `wait_ready`, giving up, names the last answer the worker gave, not the time-out
-  of a last probe its deadline cut short ("Talking to the worker").
+- **Release 6:** when `wait_ready` gives up, it names the last answer the worker gave. It no longer
+  reports the time-out of a last probe that its deadline cut short ("Talking to the worker").
 - **Release 7:** views: `write_view` and `check_view`, what a project's pages show of a check
   besides its numbers, written in the platform's view run (`is_view_run`; "Views").
 - **Release 8:** head-to-head graders for two-player games (PER-448): `commonhill_grader.head_to_head`
@@ -143,11 +143,11 @@ raises for any reason. `Batch.item_errors` and `Evaluation.item_errors` count fa
   nested at every level, cost one encoding of the output, and the response itself is capped at
   `max_bytes`.
 
-Describe outputs tightly: a schema is also what keeps a hostile output from being something your
-comparison can't handle.
+Describe outputs tightly. A schema also keeps a hostile output within the shapes your comparison
+can handle.
 
-**`wait_ready(url)`** polls `GET /healthz` until it answers exactly `200`, within the project's
-`runner.startup_timeout_s` in total, else raises `WorkerNotReady`.
+**`wait_ready(url)`** polls `GET /healthz` until it answers exactly `200`. It waits at most the
+project's `runner.startup_timeout_s` in total, and raises `WorkerNotReady` when that runs out.
 
 - The runner (and `hill run`, plain or `--pairs`) gives the grader that budget as
   `AR_STARTUP_TIMEOUT_S` (`startup_timeout()`); without it the SDK waits
@@ -178,19 +178,18 @@ initialisation don't land in the first measured batch.
 `AR_WORKER_STARTED_AT`: unix seconds on the eval VM's clock, in the grader's environment on the
 platform and under `hill run --pairs`. Without it, it counts from when the grader imported the SDK.
 
-The platform charges the worker's startup from when its process started: it takes off the seconds
-before that, which it reads from Docker (Compose creating the containers is its time, not the
-worker's).
+The platform charges the worker's startup from when its process started. It subtracts the seconds
+before that, which it reads from Docker (the time Compose spends creating the containers counts as
+Compose's, not the worker's).
 
 - Call it right before the first timed request, after `wait_ready` and any warmups, and report it
   as `timings.startup_s`. `Client.evaluate` calls it after its warmup batches
   (`Evaluation.startup_s`).
-- The startup the platform measures (`[runner.startup]`'s cap warns when a candidate's grows) then
-  includes work a worker puts off to its first, untimed, requests, not only what it does before
-  `/healthz` answers.
-- Call it exactly there, and keep the scored phase continuous: unscored work after
-  `begin_timed()` goes uncharged, and that is the grader author's error, which the platform
-  doesn't defend against.
+- So the startup the platform measures (`[runner.startup]`'s cap warns when a candidate's grows)
+  also includes work a worker postpones until its first untimed requests, not only what it does
+  before `/healthz` answers.
+- Call it exactly there, and keep the scored phase continuous. Unscored work after `begin_timed()`
+  is not charged, and that is the grader author's mistake; the platform does not guard against it.
 - A grader that never calls it has no startup to report: `write_result` leaves `timings.startup_s`
   out (`commonhill_grader.startup.began()`), and the startup cap's warning has nothing to compare.
 
@@ -209,9 +208,9 @@ time runs out first. It tells the grader when, in `AR_RUN_DEADLINE`: unix second
 clock, which the grader's container shares. `run_deadline()` returns it, and `remaining()` gives
 the seconds left (never negative). Both are `None` when the variable is unset.
 
-Work that is optional after the primary result, like a best-effort pass on the public sample,
-should stop well before the deadline. Leave a margin for writing the result: a run that is killed
-has no result at all.
+Some work is optional after the primary result, such as a best-effort pass on the public sample.
+Stop it well before the deadline. Leave a margin for writing the result: a run that is killed has
+no result at all.
 
 ```python
 left = remaining()
@@ -244,16 +243,17 @@ written first, to `items.json` beside the result (`{"schema": 1, "item_scores": 
   them its profile fails. An open project's needs none: its items are the target, not a sample.
 - Write them on every run: only a noise profile's runs read the file, so result.json stays small
   however many items there are (a verification reads at most 64 KiB of it).
-- On a held-out project they are held-out data: the platform reduces them to their standard error
-  and keeps nothing else, they are never printed, and `check_items(items, result)`, the check the
-  platform reads them with, says what is wrong without a score, a count or a value.
+- On a held-out project they are held-out data. The platform reduces them to their standard error,
+  keeps nothing else, and never prints them. `check_items(items, result)` is the check the platform
+  reads them with; it says what is wrong without a score, a count or a value.
 
 ### Failure kinds
 
 `failure_kinds` (release 4, optional) counts the failed items by kind:
-`{"timeout": 100, "wrong": 3}`. The counts sum to `failures`; there are at most 32 kinds, each 1
-to 40 of `a-z`, `0-9`, `_`, `.`, `-`; and a count of 0 is allowed (a run-level reason when no item
-was evaluated). Without it, the platform and `hill run` know only the count. The SDK's kinds:
+`{"timeout": 100, "wrong": 3}`. The counts sum to `failures`. There are at most 32 kinds, and each
+kind is 1 to 40 characters from `a-z`, `0-9`, `_`, `.` and `-`. A count of 0 is allowed
+(a run-level reason when no item was evaluated). Without it, the platform and `hill run` know only
+the count. The SDK's kinds:
 
 - a failed batch's items, by its cause (`Batch.kind`): `timeout`, `too_large` (bytes or JSON
   values), `connection` (refused, dropped, malformed HTTP, cut short), `http_<status>`, `not_json`, `bad_shape` (not
@@ -271,16 +271,17 @@ kinds = {**evaluation.failure_kinds(), **({"wrong": wrong} if wrong else {})}
 ```
 
 They are names and counts only, never anything the worker sent or the evaluation data. `hill run`
-lists them for an invalid local run. On the platform, a held-out project's are the held-out set's
-failures, which only the project's author console shows, like the failure count itself. An open
-project's readiness report shows its check runs' failures as it shows the sample's.
+lists them for an invalid local run. On the platform, a held-out project's failure kinds are the
+held-out set's failures, which only the project's author console shows, like the failure count
+itself. An open project's readiness report shows its check runs' failures as it shows the
+sample's.
 
 **`invalid_result(exc, metric=..., n_items=..., grader_version=..., kind=None)`** is the
 `except Exception` block every grader needs: it prints `run invalid: <the exception's type>`,
 never the exception's text, and writes the result with the primary value null and all `n_items`
 failed under one kind.
 
-**`check_result(result)`** is the result's check on its own, for a parsed `result.json`: it returns
+**`check_result(result)`** runs the result's check by itself, on a parsed `result.json`: it returns
 the normalized schema-1 fields, or raises `ValueError`. `n_items` and `failures` go up to
 `MAX_COUNT` (2^31 - 1). The platform reads every run's result with it, so a result written any
 other way must pass it too (extra top-level keys are kept but ignored).
@@ -306,11 +307,11 @@ its spec) gets one more run after each check's measured runs, the **view run**:
   is recorded, in words, and changes nothing else.
 
 **A view shows the public sample only.** Anyone who can see an attempt can see its view, and a
-measured run's instances are the held-out set: drawn, they would leak it. So write a view only in
-the view run (or locally), from what the run evaluated there, never from a measured run. Since it
-is the sample and the public seed, a deterministic project's view on the platform is the one its
-agent sees locally, and two attempts' views are comparable: the attempt page shows the candidate
-beside the incumbent it faced.
+measured run's instances are the held-out set: if they were drawn, they would leak it. So write a
+view only in the view run (or locally), from what the run evaluated there, never from a measured
+run. Since it is the sample and the public seed, a deterministic project's view on the platform is
+the one its agent sees locally, and two attempts' views are comparable: the attempt page shows the
+candidate beside the incumbent it faced.
 
 `write_view(panels)` writes `{"schema": 1, "panels": [...]}` to `/result/view.json` atomically,
 after `check_view`, the check the platform reads it with (`ValueError`, saying what is wrong, and
@@ -363,7 +364,7 @@ if is_view_run() or is_local():
 
 Since release 5, a grader can serve the worker an oracle: an endpoint that answers questions
 about a hidden instance during the run and counts every call. The calls become a metric the
-worker can't report away (query complexity: fewest probes, tests, backend hits). The protocol the
+worker cannot hide (query complexity: fewest probes, tests, backend hits). The protocol the
 worker speaks is in commonhill/templates' `count/CONTRACT.md` ("The oracle");
 commonhill/commonhill's `docs/adr/0014-oracle.md` has why.
 
@@ -381,21 +382,21 @@ calls = [s.calls for s in sessions]
   - `answer(instance, query)` is yours. Make it a pure function. Raise `ValueError` for an
     invalid query: that is answered 400, and counted.
   - Any other exception, an answer that isn't JSON, or one over `max_answer_bytes` is a bug in
-    the grader. It is answered the same way, counted as a call, and also counted in
+    the grader. The oracle answers it the same way, counts it as a call, and also counts it in
     `oracle.handler_errors`. Its text is never printed.
 - **`oracle.session(instance, *, key, max_calls=None)`** opens a session named by `key`'s token:
   HMAC-SHA256 of the key under the run's secret seed. Give each item's index or id, unique in the
-  run (a key used twice is a `ValueError`): every run of a seed then gives each item the same
-  token, whatever order the sessions are opened in, so a deterministic worker that reads them
-  stays deterministic, and no token tells a worker anything about another without the seed. Send
-  the token with the item. The session holds `calls`, `query_bytes` and `answer_bytes`
+  run (a key used twice is a `ValueError`), so every run of a seed gives each item the same token,
+  whatever order the sessions are opened in. A deterministic worker that reads them therefore stays
+  deterministic, and without the seed no token tells a worker anything about another. Send the
+  token with the item. The session holds `calls`, `query_bytes` and `answer_bytes`
   (canonical JSON: compact, keys sorted), `over_cap` and `closed`. Its repr never shows the
   instance.
 - **`Client.run(items, sessions=...)` and `Client.evaluate(items, batch_size, sessions=...)`**
   take one session per item, and no warmup.
   - A batch's sessions are closed as soon as its response is read, or as soon as the request
-    failed. Closing never waits for an answer still being computed: that call counted when it
-    came, and its answer is dropped. Read the counts after that.
+    failed. Closing never waits for an answer still being computed: that call was counted when it
+    arrived, and its answer is dropped. Read the counts after that.
   - A call that arrives later gets 410 and doesn't count.
   - An item whose session went over its cap fails as `oracle_cap`, whatever its output.
 - **What counts:** a well-formed request naming an open session under its cap, counted under the
@@ -416,9 +417,9 @@ Both run against a worker at `WORKER_URL`, and come with one (`python worker.py 
   labels (`labels.jsonl`, a 20-line sample), sends only the texts, and reports `accuracy` (invalid
   if more than 5% of items failed outright).
 - **`examples/oracle`:** the worker finds 50 hidden numbers by binary search over the grader's
-  oracle, which it reaches at `AR_ORACLE_URL`. The grader reports `probes`, the mean calls an
-  item, as its oracle counted them. A wrong number, or an item over its 64 calls, makes the run
-  invalid. Run it with `AR_ORACLE_URL=http://127.0.0.1:8081 python worker.py 8080 &`.
+  oracle, which it reaches at `AR_ORACLE_URL`. The grader reports `probes`, the mean number of
+  calls per item, as its oracle counted them. A wrong number, or an item over its 64 calls, makes
+  the run invalid. Run it with `AR_ORACLE_URL=http://127.0.0.1:8081 python worker.py 8080 &`.
 
 ```sh
 cd grader/examples/accuracy
